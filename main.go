@@ -75,7 +75,6 @@ func main() {
 	}
 
 	state.buildUI()
-	state.setupTray()
 	state.attachCloseBehavior()
 
 	if err := state.reloadDataset(); err != nil {
@@ -89,9 +88,15 @@ func main() {
 		state.log(fmt.Sprintf("快捷键注册失败: %v", err))
 	}
 
+	application.Lifecycle().SetOnStarted(func() {
+		state.setupTray()
+		state.showWindow()
+	})
+
 	window.Resize(fyne.NewSize(1360, 860))
 	state.mainVisible = true
-	window.ShowAndRun()
+	window.Show()
+	application.Run()
 	state.hotkeys.Close()
 }
 
