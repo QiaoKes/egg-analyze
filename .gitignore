@@ -29,6 +29,10 @@ go.work.sum
 .venv/
 .DS_Store
 
+# Generated OCR benchmark assets
+picture/synthetic/
+picture/synthetic_debug_*.png
+
 # Editor/IDE
 # .idea/
 # .vscode/

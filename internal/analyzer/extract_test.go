@@ -97,6 +97,65 @@ func TestExtractMeasurementsUsesReadingOrderWithinRow(t *testing.T) {
 	assertMeasurement(t, results[0], 0.21, 5.04)
 }
 
+func TestExtractMeasurementsAcceptsLeadingDotDecimal(t *testing.T) {
+	lines := []ocr.Line{
+		{Text: ".17<×", X: 324, Y: 334, Width: 90, Height: 24},
+		{Text: "2.775A", X: 321, Y: 369, Width: 94, Height: 27},
+	}
+
+	results := ExtractMeasurements(lines)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 measurement, got %d", len(results))
+	}
+	assertMeasurement(t, results[0], 0.17, 2.775)
+}
+
+func TestExtractMeasurementsNormalizesDigitLikeLetters(t *testing.T) {
+	lines := []ocr.Line{
+		{Text: "D.Z3<x", X: 229, Y: 138, Width: 85, Height: 17},
+		{Text: "Z.75A", X: 228, Y: 176, Width: 71, Height: 16},
+	}
+
+	results := ExtractMeasurements(lines)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 measurement, got %d", len(results))
+	}
+	assertMeasurement(t, results[0], 0.23, 2.75)
+}
+
+func TestParseNumberNormalizesCommonDigitLookalikes(t *testing.T) {
+	value, match, ok := parseNumber("O.2I<×")
+	if !ok {
+		t.Fatal("expected number to be parsed")
+	}
+	if match != "0.21" {
+		t.Fatalf("unexpected match: got %q want %q", match, "0.21")
+	}
+	if math.Abs(value-0.21) > 0.001 {
+		t.Fatalf("unexpected value: got %.3f want %.3f", value, 0.21)
+	}
+
+	value, match, ok = parseNumber("!.5S")
+	if !ok {
+		t.Fatal("expected second number to be parsed")
+	}
+	if match != "1.55" {
+		t.Fatalf("unexpected second match: got %q want %q", match, "1.55")
+	}
+	if math.Abs(value-1.55) > 0.001 {
+		t.Fatalf("unexpected second value: got %.3f want %.3f", value, 1.55)
+	}
+}
+
+func TestParseNumberDoesNotTurnPlainTextIntoNumber(t *testing.T) {
+	if _, _, ok := parseNumber("神奇的蛋"); ok {
+		t.Fatal("plain text should not become a number")
+	}
+	if _, _, ok := parseNumber("Boost"); ok {
+		t.Fatal("non-numeric text should not become a number")
+	}
+}
+
 func assertMeasurement(t *testing.T, got Measurement, wantSize, wantWeight float64) {
 	t.Helper()
 	if math.Abs(got.Size-wantSize) > 0.001 {

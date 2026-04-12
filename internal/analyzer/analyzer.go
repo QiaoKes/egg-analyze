@@ -17,7 +17,7 @@ import (
 	xdraw "golang.org/x/image/draw"
 )
 
-var numberRegex = regexp.MustCompile(`\d+(?:\.\d+)?`)
+var numberRegex = regexp.MustCompile(`(?:\d+\.\d+|\.\d+|\d+)`)
 
 type Measurement struct {
 	Size       float64
@@ -185,10 +185,13 @@ func ExtractMeasurementsWithPriors(lines []ocr.Line, priors rocom.MeasurementPri
 }
 
 func parseNumber(input string) (float64, string, bool) {
-	normalized := normalizeText(input)
+	normalized := normalizeNumericText(input)
 	match := numberRegex.FindString(normalized)
 	if match == "" {
 		return 0, "", false
+	}
+	if strings.HasPrefix(match, ".") {
+		match = "0" + match
 	}
 	value, err := strconv.ParseFloat(match, 64)
 	if err != nil {
@@ -197,29 +200,53 @@ func parseNumber(input string) (float64, string, bool) {
 	return value, match, true
 }
 
-func normalizeText(input string) string {
-	replacer := strings.NewReplacer(
+func normalizeNumericText(input string) string {
+	normalized := strings.NewReplacer(
 		" ", "",
 		"　", "",
 		"．", ".",
 		"。", ".",
 		"·", ".",
-		"O", "0",
-		"o", "0",
-		"Q", "0",
-		"D", "0",
-		"□", "0",
-		"口", "0",
-		"〇", "0",
-		"I", "1",
-		"l", "1",
-		"|", "1",
-		"S", "5",
-		"s", "5",
-		"B", "8",
 		",", ".",
-	)
-	return replacer.Replace(input)
+	).Replace(input)
+
+	runes := []rune(normalized)
+	for idx, current := range runes {
+		mapped, ok := mapDigitLikeRune(current)
+		if !ok {
+			continue
+		}
+		if !isNumericContextRune(runes, idx) {
+			continue
+		}
+		runes[idx] = mapped
+	}
+	return string(runes)
+}
+
+func mapDigitLikeRune(value rune) (rune, bool) {
+	switch value {
+	case 'O', 'o', 'Q', 'D', '□', '口', '〇':
+		return '0', true
+	case 'I', 'i', 'l', '|', '!':
+		return '1', true
+	case 'Z', 'z':
+		return '2', true
+	case 'S', 's':
+		return '5', true
+	default:
+		return 0, false
+	}
+}
+
+func isNumericContextRune(values []rune, index int) bool {
+	leftNumeric := index > 0 && isDigitOrDot(values[index-1])
+	rightNumeric := index+1 < len(values) && isDigitOrDot(values[index+1])
+	return leftNumeric || rightNumeric
+}
+
+func isDigitOrDot(value rune) bool {
+	return (value >= '0' && value <= '9') || value == '.'
 }
 
 func scale(src image.Image, factor int) image.Image {
