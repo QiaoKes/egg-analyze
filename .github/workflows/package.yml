@@ -12,7 +12,63 @@ permissions:
   contents: write
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read local version
+        id: version
+        shell: bash
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          if [[ -z "$version" ]]; then
+            echo "VERSION is empty" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release_tag=v${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure tag matches VERSION on tag push
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          expected_tag="${{ steps.version.outputs.release_tag }}"
+          actual_tag="${GITHUB_REF#refs/tags/}"
+          if [[ "$expected_tag" != "$actual_tag" ]]; then
+            echo "VERSION ($expected_tag) does not match pushed tag ($actual_tag)" >&2
+            exit 1
+          fi
+
+      - name: Create version tag from VERSION
+        if: github.ref == 'refs/heads/develop'
+        shell: bash
+        run: |
+          tag="${{ steps.version.outputs.release_tag }}"
+          git fetch --tags --force
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            tag_sha="$(git rev-list -n 1 "$tag")"
+            if [[ "$tag_sha" != "$GITHUB_SHA" ]]; then
+              echo "Tag $tag already exists on $tag_sha, but current commit is $GITHUB_SHA. Bump VERSION before releasing." >&2
+              exit 1
+            fi
+            echo "Tag $tag already points to current commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" -m "Release $tag"
+          git push origin "refs/tags/$tag"
+
   build:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -48,7 +104,7 @@ jobs:
         id: version
         shell: bash
         run: |
-          version="$(tr -d '[:space:]' < VERSION)"
+          version="${{ needs.prepare.outputs.version }}"
           if [[ -z "$version" ]]; then
             echo "VERSION is empty" >&2
             exit 1
@@ -162,7 +218,7 @@ jobs:
           path: build/${{ steps.version.outputs.package_name }}
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
 
@@ -179,6 +235,7 @@ jobs:
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release_tag=v${version}" >> "$GITHUB_OUTPUT"
 
       - name: Download packaged artifacts
         uses: actions/download-artifact@v4
@@ -189,6 +246,8 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
           files: dist/*.zip
           generate_release_notes: true
-          name: v${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.release_tag }}
