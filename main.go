@@ -77,20 +77,10 @@ func main() {
 	state.buildUI()
 	state.attachCloseBehavior()
 
-	if err := state.reloadDataset(); err != nil {
-		state.setStatus("数据加载失败")
-		state.log(fmt.Sprintf("数据加载失败: %v", err))
-	} else {
-		state.setStatus("数据已加载")
-	}
-
-	if err := state.registerHotkey(state.config.Get().Hotkey); err != nil {
-		state.log(fmt.Sprintf("快捷键注册失败: %v", err))
-	}
-
 	application.Lifecycle().SetOnStarted(func() {
 		state.setupTray()
 		state.showWindow()
+		state.startupAsync()
 	})
 
 	window.Resize(fyne.NewSize(1360, 860))
@@ -190,6 +180,22 @@ func (s *uiState) attachCloseBehavior() {
 		s.mainVisible = false
 		s.log("窗口已隐藏到托盘")
 	})
+}
+
+func (s *uiState) startupAsync() {
+	go func() {
+		s.setStatus("启动中，正在加载数据")
+		if err := s.reloadDataset(); err != nil {
+			s.setStatus("数据加载失败")
+			s.log(fmt.Sprintf("数据加载失败: %v", err))
+		} else {
+			s.setStatus("数据已加载")
+		}
+
+		if err := s.registerHotkey(s.config.Get().Hotkey); err != nil {
+			s.log(fmt.Sprintf("快捷键注册失败: %v", err))
+		}
+	}()
 }
 
 func (s *uiState) reloadDataset() error {
