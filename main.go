@@ -61,6 +61,9 @@ func main() {
 
 	application := app.NewWithID("egg-analyze")
 	application.Settings().SetTheme(newContrastTheme())
+	if icon, iconErr := buildTrayResource(); iconErr == nil {
+		application.SetIcon(icon)
+	}
 	window := application.NewWindow("洛克王国精灵蛋分析")
 
 	state := &uiState{
@@ -155,10 +158,9 @@ func (s *uiState) setupTray() {
 	icon, err := buildTrayResource()
 	if err != nil {
 		s.log(fmt.Sprintf("托盘图标初始化失败: %v", err))
-		return
+	} else {
+		s.app.SetIcon(icon)
 	}
-
-	desk.SetSystemTrayIcon(icon)
 	desk.SetSystemTrayMenu(fyne.NewMenu("洛克王国精灵蛋分析",
 		fyne.NewMenuItem("显示窗口", s.showWindow),
 		fyne.NewMenuItem("截图分析", func() {

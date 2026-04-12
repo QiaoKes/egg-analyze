@@ -5,11 +5,13 @@ on:
   push:
     branches:
       - develop
-    tags:
-      - "v*"
 
 permissions:
   contents: write
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   prepare:
@@ -52,20 +54,11 @@ jobs:
         run: |
           tag="${{ steps.version.outputs.release_tag }}"
           git fetch --tags --force
-          if git rev-parse "$tag" >/dev/null 2>&1; then
-            tag_sha="$(git rev-list -n 1 "$tag")"
-            if [[ "$tag_sha" != "$GITHUB_SHA" ]]; then
-              echo "Tag $tag already exists on $tag_sha, but current commit is $GITHUB_SHA. Bump VERSION before releasing." >&2
-              exit 1
-            fi
-            echo "Tag $tag already points to current commit."
-            exit 0
-          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$tag" -m "Release $tag"
-          git push origin "refs/tags/$tag"
+          git tag -fa "$tag" -m "Release $tag"
+          git push --force origin "refs/tags/$tag"
 
   build:
     needs: prepare
@@ -119,6 +112,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: requirements-ocr.txt
 
       - if: runner.os == 'Windows'
         id: msys2
@@ -142,7 +137,7 @@ jobs:
           New-Item -ItemType Directory -Path "build\package" -Force | Out-Null
           $env:GOOS = "${{ matrix.goos }}"
           $env:GOARCH = "${{ matrix.goarch }}"
-          go build -o "build/package/${{ matrix.binary_name }}" .
+          go build -ldflags="-H windowsgui" -o "build/package/${{ matrix.binary_name }}" .
           Copy-Item "requirements-ocr.txt" "build/package/requirements-ocr.txt" -Force
 
       - name: Build app (macOS)
@@ -190,7 +185,7 @@ jobs:
           New-Item -ItemType Directory -Path "build\\package\\python" -Force | Out-Null
           Copy-Item "$env:pythonLocation\\*" "build\\package\\python" -Recurse -Force
           & "build\\package\\python\\python.exe" -m pip install --upgrade pip
-          & "build\\package\\python\\python.exe" -m pip install -r requirements-ocr.txt
+          & "build\\package\\python\\python.exe" -m pip install --prefer-binary --no-compile -r requirements-ocr.txt
 
       - name: Bundle Python runtime (macOS)
         if: runner.os == 'macOS'
@@ -198,7 +193,7 @@ jobs:
         run: |
           cp -R "$pythonLocation" build/package/python
           build/package/python/bin/python3 -m pip install --upgrade pip
-          build/package/python/bin/python3 -m pip install -r requirements-ocr.txt
+          build/package/python/bin/python3 -m pip install --prefer-binary --no-compile -r requirements-ocr.txt
 
       - name: Package zip (Windows)
         if: runner.os == 'Windows'
@@ -251,3 +246,4 @@ jobs:
           files: dist/*.zip
           generate_release_notes: true
           name: ${{ steps.version.outputs.release_tag }}
+          overwrite_files: true
