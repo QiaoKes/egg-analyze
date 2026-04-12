@@ -22,6 +22,8 @@ type Measurement struct {
 	Size       float64
 	Weight     float64
 	AnchorText string
+	AnchorX    int
+	AnchorY    int
 	RawLines   []ocr.Line
 }
 
@@ -31,12 +33,12 @@ type Result struct {
 }
 
 type Service struct {
-	ocr    *ocr.Recognizer
+	ocr    ocr.Recognizer
 	engine *rocom.Engine
 	topN   int
 }
 
-func NewService(recognizer *ocr.Recognizer, engine *rocom.Engine, topN int) *Service {
+func NewService(recognizer ocr.Recognizer, engine *rocom.Engine, topN int) *Service {
 	return &Service{
 		ocr:    recognizer,
 		engine: engine,
@@ -50,148 +52,73 @@ func (s *Service) AnalyzeImage(ctx context.Context, img image.Image) ([]Result, 
 		return nil, nil, err
 	}
 
-	anchors := findEggAnchors(lines)
-	if len(anchors) == 0 {
-		return nil, lines, fmt.Errorf("未识别到“神奇的蛋”标题")
-	}
-
-	results := make([]Result, 0, len(anchors))
-	for idx, anchor := range anchors {
-		windowLines := filterLinesForAnchor(lines, anchor, nextAnchorY(anchors, idx), len(anchors) == 1)
-		measurement, ok := extractMeasurement(anchor.Text, windowLines)
-		if !ok {
-			crop := cropAroundAnchor(img, anchor, nextAnchorY(anchors, idx), len(anchors) == 1)
-			cropLines, err := s.ocr.Recognize(ctx, scale(crop, 2))
-			if err != nil {
-				continue
-			}
-			measurement, ok = extractMeasurement(anchor.Text, cropLines)
-			if !ok {
-				continue
-			}
+	results := buildResults(s.engine, ExtractMeasurements(lines), s.topN)
+	if len(results) == 0 {
+		scaledLines, scaledErr := s.ocr.Recognize(ctx, scale(img, 2))
+		if scaledErr == nil {
+			lines = scaledLines
+			results = buildResults(s.engine, ExtractMeasurements(lines), s.topN)
 		}
-		results = append(results, Result{
-			Measurement: measurement,
-			Candidates:  s.engine.Search(measurement.Size, measurement.Weight, s.topN),
-		})
 	}
 
 	if len(results) == 0 {
-		return nil, lines, fmt.Errorf("识别到了蛋标题，但没有提取出有效的尺寸/重量")
+		return nil, lines, fmt.Errorf("没有提取出有效的尺寸/重量")
 	}
 
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Measurement.Size < results[j].Measurement.Size
-	})
 	return dedupe(results), lines, nil
 }
 
-func findEggAnchors(lines []ocr.Line) []ocr.Line {
-	anchors := make([]ocr.Line, 0)
-	for _, line := range lines {
-		text := normalizeText(line.Text)
-		if strings.Contains(text, "神奇的蛋") || strings.Contains(text, "奇的蛋") {
-			anchors = append(anchors, line)
-		}
+func buildResults(engine *rocom.Engine, measurements []Measurement, topN int) []Result {
+	results := make([]Result, 0, len(measurements))
+	for _, measurement := range measurements {
+		results = append(results, Result{
+			Measurement: measurement,
+			Candidates:  engine.Search(measurement.Size, measurement.Weight, topN),
+		})
 	}
-	sort.Slice(anchors, func(i, j int) bool {
-		return anchors[i].Y < anchors[j].Y
+	sort.Slice(results, func(i, j int) bool {
+		left := results[i].Measurement
+		right := results[j].Measurement
+		if absInt(left.AnchorY-right.AnchorY) <= 12 {
+			return left.AnchorX < right.AnchorX
+		}
+		return left.AnchorY < right.AnchorY
 	})
-	return anchors
+	return results
 }
 
-func nextAnchorY(anchors []ocr.Line, current int) int {
-	if current+1 >= len(anchors) {
-		return math.MaxInt32
-	}
-	return anchors[current+1].Y
-}
-
-func filterLinesForAnchor(lines []ocr.Line, anchor ocr.Line, nextY int, single bool) []ocr.Line {
-	xMin := max(0, anchor.X-120)
-	xMax := anchor.X + 420
-	yMin := anchor.Y + 35
-	yMax := anchor.Y + 320
-	if nextY != math.MaxInt32 {
-		yMax = min(yMax, nextY-10)
-	}
-	if single {
-		xMin = 0
-		xMax = anchor.X + 520
-		yMax = anchor.Y + 360
-	}
-
-	filtered := make([]ocr.Line, 0)
-	for _, line := range lines {
-		if line.X < xMin || line.X > xMax {
-			continue
-		}
-		if line.Y < yMin || line.Y > yMax {
-			continue
-		}
-		filtered = append(filtered, line)
-	}
-	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].Y < filtered[j].Y
-	})
-	return filtered
-}
-
-func cropAroundAnchor(img image.Image, anchor ocr.Line, nextY int, single bool) image.Image {
-	bounds := img.Bounds()
-	left := max(bounds.Min.X, anchor.X-80)
-	top := max(bounds.Min.Y, anchor.Y+40)
-	right := min(bounds.Max.X, anchor.X+420)
-	bottom := min(bounds.Max.Y, anchor.Y+260)
-	if nextY != math.MaxInt32 {
-		bottom = min(bottom, nextY-10)
-	}
-	if single {
-		left = bounds.Min.X
-		right = bounds.Max.X
-		bottom = min(bounds.Max.Y, anchor.Y+340)
-	}
-
-	rect := image.Rect(left, top, right, bottom)
-	cropped := image.NewRGBA(image.Rect(0, 0, rect.Dx(), rect.Dy()))
-	for y := rect.Min.Y; y < rect.Max.Y; y++ {
-		for x := rect.Min.X; x < rect.Max.X; x++ {
-			cropped.Set(x-rect.Min.X, y-rect.Min.Y, img.At(x, y))
-		}
-	}
-	return cropped
-}
-
-func extractMeasurement(anchorText string, lines []ocr.Line) (Measurement, bool) {
+func ExtractMeasurements(lines []ocr.Line) []Measurement {
 	type candidate struct {
-		value float64
-		line  ocr.Line
-		kind  string
+		value      float64
+		line       ocr.Line
+		normalized string
+		kind       string
 	}
 
 	values := make([]candidate, 0)
 	for _, line := range lines {
-		number, ok := parseNumber(line.Text)
+		number, normalized, ok := parseNumber(line.Text)
 		if !ok {
 			continue
 		}
 		switch {
-		case number > 0 && number <= 1.2:
-			values = append(values, candidate{value: number, line: line, kind: "size"})
-		case number >= 0.3 && number <= 100:
-			values = append(values, candidate{value: number, line: line, kind: "weight"})
+		case isLikelySize(number, normalized):
+			values = append(values, candidate{value: number, line: line, normalized: normalized, kind: "size"})
+		case isLikelyWeight(number, normalized):
+			values = append(values, candidate{value: number, line: line, normalized: normalized, kind: "weight"})
 		}
 	}
 	sort.Slice(values, func(i, j int) bool {
 		return values[i].line.Y < values[j].line.Y
 	})
 
-	bestScore := math.MaxFloat64
-	var best Measurement
+	results := make([]Measurement, 0)
 	for idx, item := range values {
 		if item.kind != "size" {
 			continue
 		}
+		bestScore := math.MaxFloat64
+		var best Measurement
 		for next := idx + 1; next < len(values); next++ {
 			other := values[next]
 			if other.kind != "weight" {
@@ -220,28 +147,38 @@ func extractMeasurement(anchorText string, lines []ocr.Line) (Measurement, bool)
 			best = Measurement{
 				Size:       item.value,
 				Weight:     other.value,
-				AnchorText: anchorText,
+				AnchorText: item.line.Text,
+				AnchorX:    item.line.X,
+				AnchorY:    item.line.Y,
 				RawLines:   lines,
 			}
 		}
+		if bestScore == math.MaxFloat64 {
+			continue
+		}
+		results = append(results, best)
 	}
-	if bestScore == math.MaxFloat64 {
-		return Measurement{}, false
-	}
-	return best, true
+
+	sort.Slice(results, func(i, j int) bool {
+		if absInt(results[i].AnchorY-results[j].AnchorY) <= 12 {
+			return results[i].AnchorX < results[j].AnchorX
+		}
+		return results[i].AnchorY < results[j].AnchorY
+	})
+	return dedupeMeasurements(results)
 }
 
-func parseNumber(input string) (float64, bool) {
+func parseNumber(input string) (float64, string, bool) {
 	normalized := normalizeText(input)
 	match := numberRegex.FindString(normalized)
 	if match == "" {
-		return 0, false
+		return 0, "", false
 	}
 	value, err := strconv.ParseFloat(match, 64)
 	if err != nil {
-		return 0, false
+		return 0, "", false
 	}
-	return value, true
+	return value, match, true
 }
 
 func normalizeText(input string) string {
@@ -255,6 +192,9 @@ func normalizeText(input string) string {
 		"o", "0",
 		"Q", "0",
 		"D", "0",
+		"□", "0",
+		"口", "0",
+		"〇", "0",
 		"I", "1",
 		"l", "1",
 		"|", "1",
@@ -276,6 +216,17 @@ func scale(src image.Image, factor int) image.Image {
 	return dst
 }
 
+func isLikelySize(number float64, raw string) bool {
+	return number > 0 && number < 1 && strings.Contains(raw, ".")
+}
+
+func isLikelyWeight(number float64, raw string) bool {
+	if number < 0.5 || number > 100 {
+		return false
+	}
+	return strings.Contains(raw, ".")
+}
+
 func dedupe(results []Result) []Result {
 	seen := make(map[string]struct{})
 	filtered := make([]Result, 0, len(results))
@@ -290,16 +241,23 @@ func dedupe(results []Result) []Result {
 	return filtered
 }
 
-func min(left, right int) int {
-	if left < right {
-		return left
+func dedupeMeasurements(values []Measurement) []Measurement {
+	seen := make(map[string]struct{})
+	filtered := make([]Measurement, 0, len(values))
+	for _, value := range values {
+		key := fmt.Sprintf("%.3f-%.3f", value.Size, value.Weight)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		filtered = append(filtered, value)
 	}
-	return right
+	return filtered
 }
 
-func max(left, right int) int {
-	if left > right {
-		return left
+func absInt(value int) int {
+	if value < 0 {
+		return -value
 	}
-	return right
+	return value
 }
