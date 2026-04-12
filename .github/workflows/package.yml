@@ -50,6 +50,7 @@ jobs:
           python-version: "3.11"
 
       - if: runner.os == 'Windows'
+        id: msys2
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -61,10 +62,12 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         env:
-          CC: C:\msys64\mingw64\bin\gcc.exe
-          CXX: C:\msys64\mingw64\bin\g++.exe
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
         run: |
-          $env:Path = "C:\msys64\mingw64\bin;$env:Path"
+          $mingwBin = Join-Path $env:MSYS2_LOCATION "mingw64\bin"
+          $env:Path = "$mingwBin;$env:Path"
+          $env:CC = "gcc"
+          $env:CXX = "g++"
           New-Item -ItemType Directory -Path "build\package" -Force | Out-Null
           $env:GOOS = "${{ matrix.goos }}"
           $env:GOARCH = "${{ matrix.goarch }}"
