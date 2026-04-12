@@ -191,8 +191,10 @@ func writePNG(path string, img image.Image) error {
 func resolvePython() (string, error) {
 	candidates := []string{
 		strings.TrimSpace(os.Getenv("EGG_ANALYZE_PYTHON")),
+		bundledPythonPath(),
 		filepath.Join(".venv", "bin", "python3"),
 		filepath.Join(".venv", "bin", "python"),
+		filepath.Join(".venv", "Scripts", "python.exe"),
 		"python3",
 		"python",
 	}
@@ -212,5 +214,27 @@ func resolvePython() (string, error) {
 		}
 	}
 
-	return "", errors.New("RapidOCR requires Python. Create .venv and install rapidocr-onnxruntime, or set EGG_ANALYZE_PYTHON")
+	return "", errors.New("RapidOCR requires Python. Use a bundled package, create .venv and install rapidocr-onnxruntime, or set EGG_ANALYZE_PYTHON")
+}
+
+func bundledPythonPath() string {
+	executable, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+
+	baseDir := filepath.Dir(executable)
+	candidates := []string{
+		filepath.Join(baseDir, "python", "python.exe"),
+		filepath.Join(baseDir, "python", "bin", "python3"),
+		filepath.Join(baseDir, "python", "bin", "python"),
+		filepath.Join(baseDir, "..", "Resources", "python", "bin", "python3"),
+		filepath.Join(baseDir, "..", "Resources", "python", "bin", "python"),
+	}
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return ""
 }

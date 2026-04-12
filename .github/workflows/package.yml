@@ -1,0 +1,141 @@
+name: package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - develop
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: windows-amd64
+            os: windows-latest
+            goos: windows
+            goarch: amd64
+            binary_name: egg-analyze.exe
+            artifact_name: egg-analyze-windows-amd64.zip
+            flameshot_url: https://github.com/flameshot-org/flameshot/releases/download/v13.3.0/flameshot-13.3.0-win64.zip
+          - id: macos-amd64
+            os: macos-13
+            goos: darwin
+            goarch: amd64
+            binary_name: egg-analyze
+            artifact_name: egg-analyze-macos-amd64.zip
+            flameshot_url: https://github.com/flameshot-org/flameshot/releases/download/v13.3.0/Flameshot-13.3.0-artifact-macos-intel.dmg
+          - id: macos-arm64
+            os: macos-14
+            goos: darwin
+            goarch: arm64
+            binary_name: egg-analyze
+            artifact_name: egg-analyze-macos-arm64.zip
+            flameshot_url: https://github.com/flameshot-org/flameshot/releases/download/v13.3.0/Flameshot-13.3.0-artifact-macos-arm64.dmg
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+
+      - name: Build app (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          mkdir -p build/package
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o build/package/${{ matrix.binary_name }} .
+          cp requirements-ocr.txt build/package/
+
+      - name: Build app (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir -p build/package
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o build/package/${{ matrix.binary_name }} .
+          cp requirements-ocr.txt build/package/
+
+      - name: Download bundled Flameshot (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $zipPath = Join-Path $PWD "build\\flameshot.zip"
+          Invoke-WebRequest -Uri "${{ matrix.flameshot_url }}" -OutFile $zipPath
+          Expand-Archive -Path $zipPath -DestinationPath "build\\flameshot-extract" -Force
+          New-Item -ItemType Directory -Path "build\\package\\flameshot" -Force | Out-Null
+          Copy-Item "build\\flameshot-extract\\*" "build\\package\\flameshot" -Recurse -Force
+
+      - name: Download bundled Flameshot (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          dmg_path="build/flameshot.dmg"
+          curl -fsSL "${{ matrix.flameshot_url }}" -o "$dmg_path"
+          hdiutil attach "$dmg_path" -nobrowse -plist > build/flameshot-attach.plist
+          mount_point="$(python3 - <<'PY'
+          import plistlib
+          with open('build/flameshot-attach.plist', 'rb') as fh:
+              data = plistlib.load(fh)
+          for entity in data.get('system-entities', []):
+              if 'mount-point' in entity:
+                  print(entity['mount-point'])
+                  break
+          PY
+          )"
+          cp -R "$mount_point/Flameshot.app" build/package/
+          hdiutil detach "$mount_point"
+
+      - name: Bundle Python runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "build\\package\\python" -Force | Out-Null
+          Copy-Item "$env:pythonLocation\\*" "build\\package\\python" -Recurse -Force
+          & "build\\package\\python\\python.exe" -m pip install --upgrade pip
+          & "build\\package\\python\\python.exe" -m pip install -r requirements-ocr.txt
+
+      - name: Bundle Python runtime (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cp -R "$pythonLocation" build/package/python
+          build/package/python/bin/python3 -m pip install --upgrade pip
+          build/package/python/bin/python3 -m pip install -r requirements-ocr.txt
+
+      - name: Package zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "build\\package\\*" -DestinationPath "build\\${{ matrix.artifact_name }}" -Force
+
+      - name: Package zip (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent build/package "build/${{ matrix.artifact_name }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.id }}
+          path: build/${{ matrix.artifact_name }}

@@ -28,6 +28,8 @@ go.work.sum
 .env
 .venv/
 .DS_Store
+dist/
+build/
 
 # Generated OCR benchmark assets
 picture/synthetic/

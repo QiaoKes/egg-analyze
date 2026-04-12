@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -40,11 +41,13 @@ type uiState struct {
 	resultsBox  *fyne.Container
 	previewView *canvas.Image
 
-	config     *config.Manager
-	hotkeys    *hotkey.Manager
-	ocr        ocr.Recognizer
-	engine     *rocom.Engine
-	analyzeSvc *analyzer.Service
+	config          *config.Manager
+	hotkeys         *hotkey.Manager
+	ocr             ocr.Recognizer
+	engine          *rocom.Engine
+	analyzeSvc      *analyzer.Service
+	mainVisible     bool
+	captureInFlight bool
 
 	currentImage image.Image
 	quitting     bool
@@ -84,6 +87,7 @@ func main() {
 	}
 
 	window.Resize(fyne.NewSize(1360, 860))
+	state.mainVisible = true
 	window.ShowAndRun()
 	state.hotkeys.Close()
 }
@@ -104,7 +108,7 @@ func (s *uiState) buildUI() {
 
 	toolbar := container.NewHBox(
 		widget.NewButton("截图分析", func() {
-			s.run("截图分析", s.captureAndAnalyze)
+			s.beginCaptureSelection()
 		}),
 		widget.NewButton("打开图片", s.openImageDialog),
 		widget.NewButton("刷新数据", func() {
@@ -158,7 +162,7 @@ func (s *uiState) setupTray() {
 	desk.SetSystemTrayMenu(fyne.NewMenu("洛克王国蛋分析",
 		fyne.NewMenuItem("显示窗口", s.showWindow),
 		fyne.NewMenuItem("截图分析", func() {
-			s.run("截图分析", s.captureAndAnalyze)
+			s.beginCaptureSelection()
 		}),
 		fyne.NewMenuItem("刷新数据", func() {
 			s.run("刷新数据", s.reloadDataset)
@@ -176,6 +180,7 @@ func (s *uiState) attachCloseBehavior() {
 			return
 		}
 		s.window.Hide()
+		s.mainVisible = false
 		s.log("窗口已隐藏到托盘")
 	})
 }
@@ -204,17 +209,6 @@ func (s *uiState) reloadDataset() error {
 	s.sourceLabel.SetText(fmt.Sprintf("数据源：%s | 记录 %d | 更新时间 %s", source, info.RecordCount, info.UpdatedAt.Format("2006-01-02 15:04:05")))
 	s.log(fmt.Sprintf("数据已加载，来源=%s，记录=%d", info.URL, info.RecordCount))
 	return nil
-}
-
-func (s *uiState) captureAndAnalyze() error {
-	if s.analyzeSvc == nil {
-		return fmt.Errorf("数据尚未加载")
-	}
-	img, err := capture.CapturePrimary()
-	if err != nil {
-		return err
-	}
-	return s.handleImage(img, "屏幕截图")
 }
 
 func (s *uiState) handleImage(img image.Image, source string) error {
@@ -358,15 +352,64 @@ func (s *uiState) saveCurrentCapture() {
 	fileDialog.Show()
 }
 
+func (s *uiState) beginCaptureSelection() {
+	if s.captureInFlight {
+		s.log("截图流程正在进行中")
+		return
+	}
+	if s.analyzeSvc == nil {
+		err := fmt.Errorf("数据尚未加载，请先点击“刷新网站数据”")
+		s.setStatus("截图分析失败")
+		s.log(err.Error())
+		dialog.ShowError(err, s.window)
+		return
+	}
+
+	restoreWindow := s.mainVisible
+	if restoreWindow {
+		s.window.Hide()
+		s.mainVisible = false
+	}
+
+	s.captureInFlight = true
+	s.setStatus("等待 Flameshot 框选")
+	go func() {
+		time.Sleep(140 * time.Millisecond)
+
+		img, err := capture.CaptureWithFlameshot(context.Background())
+		s.captureInFlight = false
+		switch {
+		case err == nil:
+			s.showWindow()
+			s.run("截图分析", func() error {
+				return s.handleImage(img, "Flameshot 截图")
+			})
+		case errors.Is(err, capture.ErrCancelled):
+			s.setStatus("准备就绪")
+			s.log("已取消截图")
+			if restoreWindow {
+				s.showWindow()
+			}
+		default:
+			s.showWindow()
+			s.setStatus("截图分析失败")
+			s.log(fmt.Sprintf("Flameshot 截图失败: %v", err))
+			dialog.ShowError(err, s.window)
+		}
+	}()
+}
+
 func (s *uiState) saveHotkey(hotkeyText string) {
 	newCfg := s.config.Get()
 	newCfg.Hotkey = strings.TrimSpace(hotkeyText)
 	if err := s.config.Save(newCfg); err != nil {
 		s.log(fmt.Sprintf("保存快捷键失败: %v", err))
+		dialog.ShowError(err, s.window)
 		return
 	}
 	if err := s.registerHotkey(newCfg.Hotkey); err != nil {
 		s.log(fmt.Sprintf("重新注册快捷键失败: %v", err))
+		dialog.ShowError(err, s.window)
 		return
 	}
 	s.log("快捷键已更新")
@@ -374,11 +417,7 @@ func (s *uiState) saveHotkey(hotkeyText string) {
 
 func (s *uiState) registerHotkey(hotkeyText string) error {
 	return s.hotkeys.Register(hotkeyText, func() {
-		s.app.SendNotification(&fyne.Notification{
-			Title:   "洛克王国蛋分析",
-			Content: "收到截图热键，开始分析主屏截图。",
-		})
-		s.run("热键截图分析", s.captureAndAnalyze)
+		s.beginCaptureSelection()
 	})
 }
 
@@ -418,25 +457,56 @@ func (s *uiState) setStatus(message string) {
 
 func (s *uiState) showWindow() {
 	s.window.Show()
+	s.mainVisible = true
+	s.window.RequestFocus()
 }
 
 func (s *uiState) openSettingsDialog() {
 	cfg := s.config.Get()
-	hotkeyEntry := widget.NewEntry()
-	hotkeyEntry.SetText(cfg.Hotkey)
+	currentHotkey := widget.NewLabel(hotkey.NormalizeShortcut(cfg.Hotkey))
+	currentHotkey.Importance = widget.HighImportance
+	currentHotkey.Wrapping = fyne.TextWrapWord
 
-	form := widget.NewForm(
-		widget.NewFormItem("全局热键", hotkeyEntry),
+	helper := widget.NewLabel("点击“录入快捷键”后，直接按下新的组合键。录入成功会立即保存。")
+	helper.Wrapping = fyne.TextWrapWord
+
+	content := container.NewVBox(
+		widget.NewCard("全局热键", "", container.NewVBox(
+			currentHotkey,
+			helper,
+			widget.NewButton("录入快捷键", func() {
+				s.openHotkeyCaptureWindow(currentHotkey)
+			}),
+		)),
 	)
-	form.SubmitText = "保存"
-	form.CancelText = "取消"
 
-	dialog.ShowCustomConfirm("设置", "保存", "取消", form, func(ok bool) {
-		if !ok {
-			return
-		}
-		s.saveHotkey(hotkeyEntry.Text)
-	}, s.window)
+	dialog.ShowCustom("设置", "关闭", content, s.window)
+}
+
+func (s *uiState) openHotkeyCaptureWindow(currentHotkey *widget.Label) {
+	win := s.app.NewWindow("录入快捷键")
+	win.SetFixedSize(true)
+
+	captureBox := newHotkeyCaptureWidget(s.config.Get().Hotkey, func(value string) {
+		currentHotkey.SetText(hotkey.NormalizeShortcut(value))
+		s.saveHotkey(value)
+		win.Close()
+	}, func() {
+		win.Close()
+	})
+
+	content := container.NewVBox(
+		widget.NewLabel("按下你要使用的快捷键组合。"),
+		widget.NewLabel("录入会自动结束；按 Esc 取消。"),
+		captureBox,
+	)
+	win.SetContent(container.NewPadded(content))
+	win.Resize(fyne.NewSize(420, 220))
+	win.Show()
+	win.RequestFocus()
+	if canvas := win.Canvas(); canvas != nil {
+		canvas.Focus(captureBox)
+	}
 }
 
 func (s *uiState) buildEmptyResults() fyne.CanvasObject {
