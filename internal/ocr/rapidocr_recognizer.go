@@ -67,6 +67,28 @@ func (r *rapidOCRRecognizer) Recognize(ctx context.Context, img image.Image) ([]
 	return batches[0], nil
 }
 
+func (r *rapidOCRRecognizer) RecognizeText(ctx context.Context, img image.Image) ([]Line, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if err := r.ensureProcess(); err != nil {
+		return nil, err
+	}
+
+	imagePath := filepath.Join(r.tempDir, "rec-only.png")
+	if err := writePNG(imagePath, img); err != nil {
+		return nil, err
+	}
+	defer os.Remove(imagePath)
+
+	lines, err := r.recognizePathLocked(imagePath, "rec_only")
+	if err != nil {
+		r.closeProcessLocked()
+		return nil, err
+	}
+	return lines, nil
+}
+
 func (r *rapidOCRRecognizer) RecognizeBatch(ctx context.Context, images []image.Image) ([][]Line, error) {
 	if len(images) == 0 {
 		return nil, nil
@@ -84,7 +106,7 @@ func (r *rapidOCRRecognizer) RecognizeBatch(ctx context.Context, images []image.
 		if err := writePNG(imagePath, img); err != nil {
 			return nil, err
 		}
-		lines, err := r.recognizePathLocked(imagePath)
+		lines, err := r.recognizePathLocked(imagePath, "full")
 		_ = os.Remove(imagePath)
 		if err != nil {
 			r.closeProcessLocked()
@@ -122,9 +144,9 @@ func (r *rapidOCRRecognizer) ensureProcess() error {
 	return nil
 }
 
-func (r *rapidOCRRecognizer) recognizePathLocked(path string) ([]Line, error) {
+func (r *rapidOCRRecognizer) recognizePathLocked(path string, mode string) ([]Line, error) {
 	r.stderr.Reset()
-	payload, err := json.Marshal(map[string]string{"path": path})
+	payload, err := json.Marshal(map[string]string{"path": path, "mode": mode})
 	if err != nil {
 		return nil, err
 	}

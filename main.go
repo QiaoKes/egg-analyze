@@ -61,7 +61,7 @@ func main() {
 
 	application := app.NewWithID("egg-analyze")
 	application.Settings().SetTheme(newContrastTheme())
-	window := application.NewWindow("洛克王国蛋分析")
+	window := application.NewWindow("洛克王国精灵蛋分析")
 
 	state := &uiState{
 		app:     application,
@@ -159,7 +159,7 @@ func (s *uiState) setupTray() {
 	}
 
 	desk.SetSystemTrayIcon(icon)
-	desk.SetSystemTrayMenu(fyne.NewMenu("洛克王国蛋分析",
+	desk.SetSystemTrayMenu(fyne.NewMenu("洛克王国精灵蛋分析",
 		fyne.NewMenuItem("显示窗口", s.showWindow),
 		fyne.NewMenuItem("截图分析", func() {
 			s.beginCaptureSelection()

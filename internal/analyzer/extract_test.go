@@ -1,6 +1,8 @@
 package analyzer
 
 import (
+	"context"
+	"image"
 	"math"
 	"testing"
 
@@ -154,6 +156,47 @@ func TestParseNumberDoesNotTurnPlainTextIntoNumber(t *testing.T) {
 	if _, _, ok := parseNumber("Boost"); ok {
 		t.Fatal("non-numeric text should not become a number")
 	}
+}
+
+func TestRescueMeasurementsUsesRecOnlyForBrokenWeightLine(t *testing.T) {
+	lines := []ocr.Line{
+		{Text: "0.23<×", X: 120, Y: 120, Width: 80, Height: 24},
+		{Text: "2.75A", X: 120, Y: 160, Width: 80, Height: 24},
+		{Text: "0.21<×", X: 120, Y: 300, Width: 80, Height: 24},
+		{Text: "M60E'0", X: 120, Y: 340, Width: 90, Height: 24},
+	}
+	base := ExtractMeasurementsWithPriors(lines, rocom.MeasurementPriors{
+		Diameter: rocom.Range{Min: 0.04, Max: 1.1},
+		Weight:   rocom.Range{Min: 0.03, Max: 280},
+	})
+	if len(base) != 1 {
+		t.Fatalf("expected 1 base measurement, got %d", len(base))
+	}
+
+	rescued := rescueMeasurements(context.Background(), stubTextRecognizer{
+		lines: []ocr.Line{{Text: "0.309A"}},
+	}, image.NewRGBA(image.Rect(0, 0, 400, 500)), lines, base, rocom.MeasurementPriors{
+		Diameter: rocom.Range{Min: 0.04, Max: 1.1},
+		Weight:   rocom.Range{Min: 0.03, Max: 280},
+	})
+	if len(rescued) != 1 {
+		t.Fatalf("expected 1 rescued measurement, got %d", len(rescued))
+	}
+	assertMeasurement(t, rescued[0], 0.21, 0.309)
+}
+
+type stubTextRecognizer struct {
+	lines []ocr.Line
+}
+
+func (s stubTextRecognizer) Name() string { return "stub" }
+
+func (s stubTextRecognizer) Recognize(context.Context, image.Image) ([]ocr.Line, error) {
+	return nil, nil
+}
+
+func (s stubTextRecognizer) RecognizeText(context.Context, image.Image) ([]ocr.Line, error) {
+	return s.lines, nil
 }
 
 func assertMeasurement(t *testing.T, got Measurement, wantSize, wantWeight float64) {

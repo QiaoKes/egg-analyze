@@ -31,6 +31,9 @@ func main() {
 			continue
 		}
 		name := entry.Name()
+		if strings.HasPrefix(name, "synthetic_debug_") {
+			continue
+		}
 		lower := strings.ToLower(name)
 		if !strings.HasSuffix(lower, ".png") && !strings.HasSuffix(lower, ".jpg") && !strings.HasSuffix(lower, ".jpeg") {
 			continue

@@ -29,20 +29,37 @@ def main():
         try:
             payload = json.loads(raw)
             path = payload["path"]
-            result, _ = engine(path)
+            mode = payload.get("mode", "full")
+            if mode == "rec_only":
+                result, _ = engine(path, use_det=False, use_cls=False, use_rec=True)
+            else:
+                result, _ = engine(path)
             lines = []
-            for item in result or []:
-                box, text, _score = item
-                x, y, width, height = bounds(box)
-                lines.append(
-                    {
-                        "Text": text,
-                        "X": x,
-                        "Y": y,
-                        "Width": width,
-                        "Height": height,
-                    }
-                )
+            if mode == "rec_only":
+                for item in result or []:
+                    text = item[0]
+                    lines.append(
+                        {
+                            "Text": text,
+                            "X": 0,
+                            "Y": 0,
+                            "Width": 0,
+                            "Height": 0,
+                        }
+                    )
+            else:
+                for item in result or []:
+                    box, text, _score = item
+                    x, y, width, height = bounds(box)
+                    lines.append(
+                        {
+                            "Text": text,
+                            "X": x,
+                            "Y": y,
+                            "Width": width,
+                            "Height": height,
+                        }
+                    )
             print(json.dumps({"ok": True, "lines": lines}, ensure_ascii=False), flush=True)
         except Exception as exc:
             print(

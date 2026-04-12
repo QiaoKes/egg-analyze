@@ -105,6 +105,7 @@ func bundledFlameshotCandidates() []string {
 	}
 	if runtime.GOOS == "darwin" {
 		return []string{
+			filepath.Join("/Applications", "Flameshot.app", "Contents", "MacOS", "flameshot"),
 			filepath.Join(baseDir, "Flameshot.app", "Contents", "MacOS", "flameshot"),
 			filepath.Join(baseDir, "flameshot"),
 			filepath.Join(baseDir, "bin", "Flameshot.app", "Contents", "MacOS", "flameshot"),

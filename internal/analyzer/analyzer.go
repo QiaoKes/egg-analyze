@@ -72,6 +72,16 @@ func ExtractBestMeasurements(ctx context.Context, recognizer ocr.Recognizer, img
 		return nil, nil, err
 	}
 	measurements := ExtractMeasurementsWithPriors(lines, priors)
+	if textRecognizer, ok := recognizer.(ocr.TextRecognizer); ok {
+		measurements = append(measurements, rescueMeasurements(ctx, textRecognizer, img, lines, measurements, priors)...)
+		measurements = dedupeMeasurements(measurements)
+		sort.Slice(measurements, func(i, j int) bool {
+			if absInt(measurements[i].AnchorY-measurements[j].AnchorY) <= 12 {
+				return measurements[i].AnchorX < measurements[j].AnchorX
+			}
+			return measurements[i].AnchorY < measurements[j].AnchorY
+		})
+	}
 	if len(measurements) == 0 {
 		return nil, lines, fmt.Errorf("没有提取出有效的尺寸/重量")
 	}
@@ -198,6 +208,143 @@ func parseNumber(input string) (float64, string, bool) {
 		return 0, "", false
 	}
 	return value, match, true
+}
+
+func rescueMeasurements(ctx context.Context, recognizer ocr.TextRecognizer, img image.Image, lines []ocr.Line, existing []Measurement, priors rocom.MeasurementPriors) []Measurement {
+	bounds := img.Bounds()
+	matched := make(map[string]struct{}, len(existing))
+	for _, item := range existing {
+		matched[measurementAnchorKey(item.AnchorX, item.AnchorY)] = struct{}{}
+	}
+
+	sortedLines := append([]ocr.Line(nil), lines...)
+	sort.Slice(sortedLines, func(i, j int) bool {
+		if absInt(sortedLines[i].Y-sortedLines[j].Y) <= rowTolerance(sortedLines[i], sortedLines[j]) {
+			return sortedLines[i].X < sortedLines[j].X
+		}
+		return sortedLines[i].Y < sortedLines[j].Y
+	})
+
+	rescued := make([]Measurement, 0)
+	for _, line := range sortedLines {
+		if _, exists := matched[measurementAnchorKey(line.X, line.Y)]; exists {
+			continue
+		}
+
+		size, normalized, ok := parseNumber(line.Text)
+		if !ok || isIgnoredNumberLine(line.Text, normalized) {
+			continue
+		}
+		if !inNumericRange(size, expandRange(priors.Diameter, 0.18, 0.02)) {
+			continue
+		}
+
+		target, ok := findRescueTarget(line, sortedLines)
+		if !ok {
+			continue
+		}
+
+		crop, ok := cropLineWithPadding(img, target, 18, 12)
+		if !ok {
+			continue
+		}
+
+		textLines, err := recognizer.RecognizeText(ctx, crop)
+		if err != nil {
+			continue
+		}
+		weight, ok := parseRescuedWeight(textLines, priors.Weight)
+		if !ok {
+			continue
+		}
+
+		measurement := Measurement{
+			Size:       size,
+			Weight:     weight,
+			AnchorText: line.Text,
+			AnchorX:    clampInt(line.X, bounds.Min.X, bounds.Max.X),
+			AnchorY:    clampInt(line.Y, bounds.Min.Y, bounds.Max.Y),
+			RawLines:   lines,
+		}
+		rescued = append(rescued, measurement)
+		matched[measurementAnchorKey(line.X, line.Y)] = struct{}{}
+	}
+
+	return rescued
+}
+
+func parseRescuedWeight(lines []ocr.Line, weightRange rocom.Range) (float64, bool) {
+	bestScore := -1.0
+	bestValue := 0.0
+	expanded := expandRange(weightRange, 0.25, 0.03)
+	for _, line := range lines {
+		value, normalized, ok := parseNumber(line.Text)
+		if !ok || isIgnoredNumberLine(line.Text, normalized) {
+			continue
+		}
+		if !inNumericRange(value, expanded) {
+			continue
+		}
+		score := plausibilityScore(value, weightRange, 0.12)
+		if score > bestScore {
+			bestScore = score
+			bestValue = value
+		}
+	}
+	return bestValue, bestScore > 0
+}
+
+func findRescueTarget(anchor ocr.Line, lines []ocr.Line) (ocr.Line, bool) {
+	bestScore := math.Inf(-1)
+	var best ocr.Line
+	for _, candidate := range lines {
+		if candidate.X == anchor.X && candidate.Y == anchor.Y && candidate.Width == anchor.Width && candidate.Height == anchor.Height {
+			continue
+		}
+
+		dy := candidate.Y - anchor.Y
+		dx := candidate.X - anchor.X
+		sameColumn := absInt(dx) <= maxInt(anchor.Width, candidate.Width)
+		sameRow := absInt(dy) <= rowTolerance(anchor, candidate)
+
+		score := math.Inf(-1)
+		switch {
+		case sameColumn && dy > 0 && dy <= maxInt(180, anchor.Height*4):
+			score = 220 - float64(dy) - float64(absInt(dx))*0.8
+		case sameRow && dx > 0 && dx <= maxInt(260, anchor.Width*5):
+			score = 180 - float64(dx) - float64(absInt(dy))*1.2
+		default:
+			continue
+		}
+
+		if score > bestScore {
+			bestScore = score
+			best = candidate
+		}
+	}
+	return best, !math.IsInf(bestScore, -1)
+}
+
+func cropLineWithPadding(src image.Image, line ocr.Line, padX, padY int) (image.Image, bool) {
+	bounds := src.Bounds()
+	left := clampInt(line.X-padX, bounds.Min.X, bounds.Max.X)
+	top := clampInt(line.Y-padY, bounds.Min.Y, bounds.Max.Y)
+	right := clampInt(line.X+maxInt(line.Width, 1)+padX, bounds.Min.X, bounds.Max.X)
+	bottom := clampInt(line.Y+maxInt(line.Height, 1)+padY, bounds.Min.Y, bounds.Max.Y)
+	if right-left < 8 || bottom-top < 8 {
+		return nil, false
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, right-left, bottom-top))
+	for y := top; y < bottom; y++ {
+		for x := left; x < right; x++ {
+			dst.Set(x-left, y-top, src.At(x, y))
+		}
+	}
+	return dst, true
+}
+
+func measurementAnchorKey(x, y int) string {
+	return fmt.Sprintf("%d:%d", x, y)
 }
 
 func normalizeNumericText(input string) string {
@@ -482,4 +629,14 @@ func maxInt(left, right int) int {
 		return left
 	}
 	return right
+}
+
+func clampInt(value, minValue, maxValue int) int {
+	if value < minValue {
+		return minValue
+	}
+	if value > maxValue {
+		return maxValue
+	}
+	return value
 }

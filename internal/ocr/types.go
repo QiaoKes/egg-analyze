@@ -22,3 +22,8 @@ type BatchRecognizer interface {
 	Recognizer
 	RecognizeBatch(context.Context, []image.Image) ([][]Line, error)
 }
+
+type TextRecognizer interface {
+	Recognizer
+	RecognizeText(context.Context, image.Image) ([]Line, error)
+}
