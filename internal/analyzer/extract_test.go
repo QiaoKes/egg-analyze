@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"egg-analyze/internal/ocr"
+	"egg-analyze/internal/rocom"
 )
 
 func TestExtractMeasurementsWithoutTitleAnchor(t *testing.T) {
@@ -59,6 +60,41 @@ func TestExtractMeasurementsKeepsScreenOrder(t *testing.T) {
 	assertMeasurement(t, results[0], 0.20, 11.052)
 	assertMeasurement(t, results[1], 0.17, 2.775)
 	assertMeasurement(t, results[2], 0.23, 2.75)
+}
+
+func TestExtractMeasurementsAcceptsLowWeightFromDatasetRange(t *testing.T) {
+	lines := []ocr.Line{
+		{Text: "神奇的蛋", X: 80, Y: 61, Width: 153, Height: 36},
+		{Text: "0.21", X: 81, Y: 253, Width: 84, Height: 25},
+		{Text: "0.309<", X: 273, Y: 253, Width: 109, Height: 25},
+		{Text: "2026-04-12", X: 427, Y: 254, Width: 147, Height: 23},
+	}
+
+	results := ExtractMeasurementsWithPriors(lines, rocom.MeasurementPriors{
+		Diameter: rocom.Range{Min: 0.04, Max: 1.1},
+		Weight:   rocom.Range{Min: 0.03, Max: 280},
+	})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 measurement, got %d", len(results))
+	}
+	assertMeasurement(t, results[0], 0.21, 0.309)
+}
+
+func TestExtractMeasurementsUsesReadingOrderWithinRow(t *testing.T) {
+	lines := []ocr.Line{
+		{Text: "0.21", X: 81, Y: 266, Width: 84, Height: 25},
+		{Text: "5.04<×", X: 249, Y: 265, Width: 96, Height: 26},
+		{Text: "2026-04-12", X: 407, Y: 269, Width: 142, Height: 18},
+	}
+
+	results := ExtractMeasurementsWithPriors(lines, rocom.MeasurementPriors{
+		Diameter: rocom.Range{Min: 0.04, Max: 1.1},
+		Weight:   rocom.Range{Min: 0.03, Max: 280},
+	})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 measurement, got %d", len(results))
+	}
+	assertMeasurement(t, results[0], 0.21, 5.04)
 }
 
 func assertMeasurement(t *testing.T, got Measurement, wantSize, wantWeight float64) {

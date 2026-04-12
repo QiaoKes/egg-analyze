@@ -40,6 +40,11 @@ type Engine struct {
 	rows []Row
 }
 
+type MeasurementPriors struct {
+	Diameter Range
+	Weight   Range
+}
+
 type scoredRow struct {
 	row       Row
 	matchType string
@@ -91,6 +96,24 @@ func (e *Engine) Search(diameter, weight float64, limit int) []Candidate {
 		return normalized[:limit]
 	}
 	return normalized
+}
+
+func (e *Engine) MeasurementPriors() MeasurementPriors {
+	if len(e.rows) == 0 {
+		return MeasurementPriors{}
+	}
+
+	priors := MeasurementPriors{
+		Diameter: Range{Min: e.rows[0].DiameterRange.Min, Max: e.rows[0].DiameterRange.Max},
+		Weight:   Range{Min: e.rows[0].WeightRange.Min, Max: e.rows[0].WeightRange.Max},
+	}
+	for _, row := range e.rows[1:] {
+		priors.Diameter.Min = math.Min(priors.Diameter.Min, row.DiameterRange.Min)
+		priors.Diameter.Max = math.Max(priors.Diameter.Max, row.DiameterRange.Max)
+		priors.Weight.Min = math.Min(priors.Weight.Min, row.WeightRange.Min)
+		priors.Weight.Max = math.Max(priors.Weight.Max, row.WeightRange.Max)
+	}
+	return priors
 }
 
 func ParseRange(value string) (Range, error) {

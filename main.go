@@ -9,6 +9,7 @@ import (
 	_ "image/jpeg"
 	"image/png"
 	_ "image/png"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -233,24 +234,18 @@ func (s *uiState) handleImage(img image.Image, source string) error {
 	}
 
 	s.updatePreview(img)
-	s.renderResults(results, source, len(rawLines))
+	s.renderResults(results)
 	s.log(fmt.Sprintf("%s 完成，识别到 %d 组尺寸/重量", source, len(results)))
 	return nil
 }
 
-func (s *uiState) renderResults(results []analyzer.Result, source string, rawLineCount int) {
-	objects := []fyne.CanvasObject{
-		widget.NewCard("本次分析", "", container.NewVBox(
-			widget.NewLabel(fmt.Sprintf("来源：%s", source)),
-			widget.NewLabel(fmt.Sprintf("OCR 行数：%d", rawLineCount)),
-			widget.NewLabel(fmt.Sprintf("命中数据组数：%d", len(results))),
-		)),
-	}
+func (s *uiState) renderResults(results []analyzer.Result) {
+	objects := make([]fyne.CanvasObject, 0, len(results))
 	for idx, result := range results {
 		candidates := make([]fyne.CanvasObject, 0, len(result.Candidates)+1)
 		metrics := container.NewGridWithColumns(2,
-			widget.NewCard("Size", "", widget.NewLabelWithStyle(fmt.Sprintf("%.3f", result.Measurement.Size), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})),
-			widget.NewCard("Weight", "", widget.NewLabelWithStyle(fmt.Sprintf("%.3f", result.Measurement.Weight), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})),
+			buildMetricRow("Size", fmt.Sprintf("%.3f", result.Measurement.Size)),
+			buildMetricRow("Weight", fmt.Sprintf("%.3f", result.Measurement.Weight)),
 		)
 		candidates = append(candidates, metrics)
 		for candidateIndex, candidate := range result.Candidates {
@@ -265,7 +260,7 @@ func (s *uiState) renderResults(results []analyzer.Result, source string, rawLin
 		}
 		objects = append(objects, widget.NewCard(
 			fmt.Sprintf("蛋 %d", idx+1),
-			"先看 size / weight，再看候选 Top 结果",
+			"",
 			container.NewVBox(candidates...),
 		))
 	}
@@ -274,6 +269,13 @@ func (s *uiState) renderResults(results []analyzer.Result, source string, rawLin
 	}
 	s.resultsBox.Objects = objects
 	s.resultsBox.Refresh()
+}
+
+func buildMetricRow(name, value string) fyne.CanvasObject {
+	label := widget.NewLabel(name)
+	label.Importance = widget.MediumImportance
+	number := widget.NewLabelWithStyle(value, fyne.TextAlignTrailing, fyne.TextStyle{Bold: true})
+	return container.NewPadded(container.NewBorder(nil, nil, label, nil, number))
 }
 
 func (s *uiState) updatePreview(img image.Image) {
@@ -301,6 +303,13 @@ func (s *uiState) openImageDialog() {
 		}
 
 		path := reader.URI().Path()
+		if dir := filepath.Dir(path); dir != "" && dir != "." {
+			cfg := s.config.Get()
+			cfg.LastImageDir = dir
+			if saveErr := s.config.Save(cfg); saveErr != nil {
+				s.log(fmt.Sprintf("保存图片目录失败: %v", saveErr))
+			}
+		}
 		s.setStatus("图片分析处理中")
 		if analyzeErr := s.handleImage(img, path); analyzeErr != nil {
 			s.setStatus("图片分析失败")
@@ -311,6 +320,15 @@ func (s *uiState) openImageDialog() {
 		s.setStatus("图片分析完成")
 	}, s.window)
 	fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".png", ".jpg", ".jpeg"}))
+	if lastDir := strings.TrimSpace(s.config.Get().LastImageDir); lastDir != "" {
+		if uri := storage.NewFileURI(lastDir); uri != nil {
+			if lister, err := storage.ListerForURI(uri); err == nil {
+				fileDialog.SetLocation(lister)
+			} else {
+				s.log(fmt.Sprintf("恢复图片目录失败: %v", err))
+			}
+		}
+	}
 	fileDialog.Show()
 }
 

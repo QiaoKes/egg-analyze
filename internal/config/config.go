@@ -23,6 +23,7 @@ type Config struct {
 	CaptureMode  string `json:"capture_mode"`
 	AutoRefresh  bool   `json:"auto_refresh"`
 	TopCandidate int    `json:"top_candidate"`
+	LastImageDir string `json:"last_image_dir"`
 }
 
 type Manager struct {

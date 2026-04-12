@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"image/color"
 	"math"
 	"regexp"
 	"sort"
@@ -32,9 +33,17 @@ type Result struct {
 	Candidates  []rocom.Candidate
 }
 
+type extractionCandidate struct {
+	value      float64
+	line       ocr.Line
+	normalized string
+	order      int
+}
+
 type Service struct {
 	ocr    ocr.Recognizer
 	engine *rocom.Engine
+	priors rocom.MeasurementPriors
 	topN   int
 }
 
@@ -42,30 +51,31 @@ func NewService(recognizer ocr.Recognizer, engine *rocom.Engine, topN int) *Serv
 	return &Service{
 		ocr:    recognizer,
 		engine: engine,
+		priors: engine.MeasurementPriors(),
 		topN:   topN,
 	}
 }
 
 func (s *Service) AnalyzeImage(ctx context.Context, img image.Image) ([]Result, []ocr.Line, error) {
-	lines, err := s.ocr.Recognize(ctx, img)
+	measurements, lines, err := ExtractBestMeasurements(ctx, s.ocr, img, s.priors)
 	if err != nil {
 		return nil, nil, err
 	}
+	results := buildResults(s.engine, measurements, s.topN)
+	return dedupe(results), lines, nil
+}
 
-	results := buildResults(s.engine, ExtractMeasurements(lines), s.topN)
-	if len(results) == 0 {
-		scaledLines, scaledErr := s.ocr.Recognize(ctx, scale(img, 2))
-		if scaledErr == nil {
-			lines = scaledLines
-			results = buildResults(s.engine, ExtractMeasurements(lines), s.topN)
-		}
+func ExtractBestMeasurements(ctx context.Context, recognizer ocr.Recognizer, img image.Image, priors rocom.MeasurementPriors) ([]Measurement, []ocr.Line, error) {
+	prepared := prepareOCRImage(img)
+	lines, err := recognizer.Recognize(ctx, prepared)
+	if err != nil {
+		return nil, nil, err
 	}
-
-	if len(results) == 0 {
+	measurements := ExtractMeasurementsWithPriors(lines, priors)
+	if len(measurements) == 0 {
 		return nil, lines, fmt.Errorf("没有提取出有效的尺寸/重量")
 	}
-
-	return dedupe(results), lines, nil
+	return measurements, lines, nil
 }
 
 func buildResults(engine *rocom.Engine, measurements []Measurement, topN int) []Result {
@@ -88,75 +98,81 @@ func buildResults(engine *rocom.Engine, measurements []Measurement, topN int) []
 }
 
 func ExtractMeasurements(lines []ocr.Line) []Measurement {
-	type candidate struct {
-		value      float64
-		line       ocr.Line
-		normalized string
-		kind       string
+	return ExtractMeasurementsWithPriors(lines, defaultMeasurementPriors())
+}
+
+func ExtractMeasurementsWithPriors(lines []ocr.Line, priors rocom.MeasurementPriors) []Measurement {
+	type pair struct {
+		left  extractionCandidate
+		right extractionCandidate
+		score float64
 	}
 
-	values := make([]candidate, 0)
-	for _, line := range lines {
-		number, normalized, ok := parseNumber(line.Text)
-		if !ok {
-			continue
+	sortedLines := append([]ocr.Line(nil), lines...)
+	sort.Slice(sortedLines, func(i, j int) bool {
+		if absInt(sortedLines[i].Y-sortedLines[j].Y) <= rowTolerance(sortedLines[i], sortedLines[j]) {
+			return sortedLines[i].X < sortedLines[j].X
 		}
-		switch {
-		case isLikelySize(number, normalized):
-			values = append(values, candidate{value: number, line: line, normalized: normalized, kind: "size"})
-		case isLikelyWeight(number, normalized):
-			values = append(values, candidate{value: number, line: line, normalized: normalized, kind: "weight"})
-		}
-	}
-	sort.Slice(values, func(i, j int) bool {
-		return values[i].line.Y < values[j].line.Y
+		return sortedLines[i].Y < sortedLines[j].Y
 	})
 
+	values := make([]extractionCandidate, 0, len(sortedLines))
+	for idx, line := range sortedLines {
+		number, normalized, ok := parseNumber(line.Text)
+		if !ok || isIgnoredNumberLine(line.Text, normalized) {
+			continue
+		}
+		if !inNumericRange(number, expandRange(unionRange(priors.Diameter, priors.Weight), 0.35, 1)) {
+			continue
+		}
+		values = append(values, extractionCandidate{
+			value:      number,
+			line:       line,
+			normalized: normalized,
+			order:      idx,
+		})
+	}
+
+	pairs := make([]pair, 0)
+	for i := 0; i < len(values); i++ {
+		for j := i + 1; j < len(values); j++ {
+			score, ok := scorePair(values[i], values[j], priors)
+			if !ok {
+				continue
+			}
+			pairs = append(pairs, pair{left: values[i], right: values[j], score: score})
+		}
+	}
+
+	sort.Slice(pairs, func(i, j int) bool {
+		if math.Abs(pairs[i].score-pairs[j].score) < 0.001 {
+			if pairs[i].left.order == pairs[j].left.order {
+				return pairs[i].right.order < pairs[j].right.order
+			}
+			return pairs[i].left.order < pairs[j].left.order
+		}
+		return pairs[i].score > pairs[j].score
+	})
+
+	used := make(map[int]struct{})
 	results := make([]Measurement, 0)
-	for idx, item := range values {
-		if item.kind != "size" {
+	for _, item := range pairs {
+		if _, exists := used[item.left.order]; exists {
 			continue
 		}
-		bestScore := math.MaxFloat64
-		var best Measurement
-		for next := idx + 1; next < len(values); next++ {
-			other := values[next]
-			if other.kind != "weight" {
-				continue
-			}
-			dy := math.Abs(float64(other.line.Y - item.line.Y))
-			if dy > 120 {
-				continue
-			}
-			dx := math.Abs(float64(other.line.X - item.line.X))
-			if dx > 280 {
-				continue
-			}
-			sameRow := dy <= 18
-			if sameRow && other.line.X <= item.line.X {
-				continue
-			}
-			score := dy*2 + dx
-			if other.line.Y < item.line.Y {
-				score += 80
-			}
-			if score >= bestScore {
-				continue
-			}
-			bestScore = score
-			best = Measurement{
-				Size:       item.value,
-				Weight:     other.value,
-				AnchorText: item.line.Text,
-				AnchorX:    item.line.X,
-				AnchorY:    item.line.Y,
-				RawLines:   lines,
-			}
-		}
-		if bestScore == math.MaxFloat64 {
+		if _, exists := used[item.right.order]; exists {
 			continue
 		}
-		results = append(results, best)
+		used[item.left.order] = struct{}{}
+		used[item.right.order] = struct{}{}
+		results = append(results, Measurement{
+			Size:       item.left.value,
+			Weight:     item.right.value,
+			AnchorText: item.left.line.Text,
+			AnchorX:    item.left.line.X,
+			AnchorY:    item.left.line.Y,
+			RawLines:   lines,
+		})
 	}
 
 	sort.Slice(results, func(i, j int) bool {
@@ -216,15 +232,49 @@ func scale(src image.Image, factor int) image.Image {
 	return dst
 }
 
-func isLikelySize(number float64, raw string) bool {
-	return number > 0 && number < 1 && strings.Contains(raw, ".")
+func prepareOCRImage(img image.Image) image.Image {
+	return img
 }
 
-func isLikelyWeight(number float64, raw string) bool {
-	if number < 0.5 || number > 100 {
-		return false
+func grayscale(src image.Image) image.Image {
+	bounds := src.Bounds()
+	dst := image.NewGray(bounds)
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			dst.Set(x, y, color.GrayModel.Convert(src.At(x, y)))
+		}
 	}
-	return strings.Contains(raw, ".")
+	return dst
+}
+
+func autocontrast(src image.Image) image.Image {
+	bounds := src.Bounds()
+	dst := image.NewGray(bounds)
+	minValue := uint8(255)
+	maxValue := uint8(0)
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			v := color.GrayModel.Convert(src.At(x, y)).(color.Gray).Y
+			if v < minValue {
+				minValue = v
+			}
+			if v > maxValue {
+				maxValue = v
+			}
+		}
+	}
+	if maxValue <= minValue {
+		return src
+	}
+	scaleFactor := 255.0 / float64(maxValue-minValue)
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			v := color.GrayModel.Convert(src.At(x, y)).(color.Gray).Y
+			adjusted := uint8(math.Round(float64(v-minValue) * scaleFactor))
+			dst.SetGray(x, y, color.Gray{Y: adjusted})
+		}
+	}
+	return dst
 }
 
 func dedupe(results []Result) []Result {
@@ -260,4 +310,149 @@ func absInt(value int) int {
 		return -value
 	}
 	return value
+}
+
+func defaultMeasurementPriors() rocom.MeasurementPriors {
+	return rocom.MeasurementPriors{
+		Diameter: rocom.Range{Min: 0.03, Max: 1.2},
+		Weight:   rocom.Range{Min: 0.03, Max: 300},
+	}
+}
+
+func unionRange(left, right rocom.Range) rocom.Range {
+	return rocom.Range{
+		Min: math.Min(left.Min, right.Min),
+		Max: math.Max(left.Max, right.Max),
+	}
+}
+
+func isIgnoredNumberLine(raw, normalized string) bool {
+	trimmed := strings.TrimSpace(normalized)
+	if trimmed == "" {
+		return true
+	}
+	if strings.Contains(raw, "%") {
+		return true
+	}
+	if matched, _ := regexp.MatchString(`^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}$`, trimmed); matched {
+		return true
+	}
+	return !strings.Contains(trimmed, ".")
+}
+
+func rowTolerance(left, right ocr.Line) int {
+	height := maxInt(left.Height, right.Height)
+	return maxInt(12, height/2)
+}
+
+func scorePair(left, right extractionCandidate, priors rocom.MeasurementPriors) (float64, bool) {
+	dy := absInt(right.line.Y - left.line.Y)
+	dx := right.line.X - left.line.X
+	sameRow := dy <= rowTolerance(left.line, right.line)
+	sameColumn := absInt(right.line.X-left.line.X) <= maxInt(left.line.Width, right.line.Width)*2
+
+	switch {
+	case sameRow:
+		if dx <= 0 || dx > 520 {
+			return 0, false
+		}
+	case sameColumn:
+		if dy <= 0 || dy > 220 {
+			return 0, false
+		}
+	default:
+		return 0, false
+	}
+
+	score := 0.0
+	score += plausibilityScore(left.value, priors.Diameter, 0.18)
+	score += plausibilityScore(right.value, priors.Weight, 0.18)
+	if score <= 40 {
+		return 0, false
+	}
+
+	if sameRow {
+		score += 140
+		score += 60 * closenessScore(float64(dx), 520)
+		score += 30 * closenessScore(float64(dy), float64(maxInt(16, rowTolerance(left.line, right.line))))
+	} else {
+		score += 90
+		score += 50 * closenessScore(float64(dy), 220)
+		score += 20 * closenessScore(float64(absInt(dx)), float64(maxInt(80, maxInt(left.line.Width, right.line.Width)*2)))
+	}
+
+	gap := right.order - left.order - 1
+	if gap > 0 {
+		score -= float64(gap) * 18
+	}
+
+	if strings.Count(left.normalized, ".") == 1 {
+		score += 8
+	}
+	if strings.Count(right.normalized, ".") == 1 {
+		score += 8
+	}
+
+	return score, true
+}
+
+func plausibilityScore(value float64, expected rocom.Range, margin float64) float64 {
+	expanded := expandRange(expected, margin, 0.02)
+	if !inNumericRange(value, expanded) {
+		return -120
+	}
+	if inNumericRange(value, expected) {
+		return 80 + 20*closenessScore(distanceToCenter(value, expected), rangeHalfWidth(expected)+0.01)
+	}
+	return 45 + 15*closenessScore(distanceToRangeValue(value, expected), expanded.Max-expanded.Min)
+}
+
+func expandRange(value rocom.Range, ratio, floor float64) rocom.Range {
+	span := value.Max - value.Min
+	margin := math.Max(span*ratio, floor)
+	return rocom.Range{
+		Min: math.Max(0, value.Min-margin),
+		Max: value.Max + margin,
+	}
+}
+
+func inNumericRange(value float64, r rocom.Range) bool {
+	return value >= r.Min && value <= r.Max
+}
+
+func distanceToCenter(value float64, r rocom.Range) float64 {
+	center := (r.Min + r.Max) / 2
+	return math.Abs(value - center)
+}
+
+func rangeHalfWidth(r rocom.Range) float64 {
+	return math.Max((r.Max-r.Min)/2, 0.001)
+}
+
+func distanceToRangeValue(value float64, r rocom.Range) float64 {
+	if value < r.Min {
+		return r.Min - value
+	}
+	if value > r.Max {
+		return value - r.Max
+	}
+	return 0
+}
+
+func closenessScore(distance, scale float64) float64 {
+	if scale <= 0 {
+		return 0
+	}
+	score := 1 - distance/scale
+	if score < 0 {
+		return 0
+	}
+	return score
+}
+
+func maxInt(left, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }
