@@ -97,7 +97,7 @@ func main() {
 		state.startupAsync()
 	})
 
-	state.bubbleWindow.Resize(fyne.NewSize(78, 78))
+	state.bubbleWindow.Resize(fyne.NewSize(52, 52))
 	state.panelWindow.Resize(fyne.NewSize(360, 412))
 	state.resultWindow.Resize(fyne.NewSize(520, 680))
 	application.Run()
@@ -613,7 +613,7 @@ func (s *uiState) showBubbleWindow() {
 		s.bubblePrimed = true
 		s.bubbleWindow.Show()
 		configureNativeWindow(s.bubbleWindow, nativeWindowStyle{
-			CornerRadius:        39,
+			CornerRadius:        26,
 			Floating:            true,
 			Transparent:         true,
 			MovableByBackground: true,
@@ -626,14 +626,22 @@ func (s *uiState) showBubbleWindow() {
 		return
 	}
 	s.bubbleWindow.Show()
-	configureNativeWindow(s.bubbleWindow, nativeWindowStyle{
-		CornerRadius:        39,
+	style := nativeWindowStyle{
+		CornerRadius:        26,
 		Floating:            true,
 		Transparent:         true,
 		MovableByBackground: true,
-	})
+	}
+	configureNativeWindow(s.bubbleWindow, style)
 	s.restoreBubblePosition()
 	s.bubbleWindow.RequestFocus()
+	go func() {
+		for _, delay := range []time.Duration{18 * time.Millisecond, 72 * time.Millisecond} {
+			time.Sleep(delay)
+			configureNativeWindow(s.bubbleWindow, style)
+			s.restoreBubblePosition()
+		}
+	}()
 }
 
 func (s *uiState) hideBubbleWindow() {
