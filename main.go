@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"egg-analyze/internal/analyzer"
+	"egg-analyze/internal/atlas"
 	"egg-analyze/internal/capture"
 	"egg-analyze/internal/config"
 	"egg-analyze/internal/hotkey"
@@ -46,6 +47,7 @@ type uiState struct {
 	config          *config.Manager
 	hotkeys         *hotkey.Manager
 	ocr             ocr.Recognizer
+	atlas           *atlas.Service
 	engine          *rocom.Engine
 	analyzeSvc      *analyzer.Service
 	captureInFlight bool
@@ -72,6 +74,7 @@ func main() {
 		config:  cfgMgr,
 		hotkeys: hotkey.NewManager(),
 		ocr:     ocr.New(),
+		atlas:   atlas.New(),
 	}
 
 	state.buildUI()
@@ -203,6 +206,7 @@ func (s *uiState) reloadDataset() error {
 
 	s.sourceLabel.SetText(fmt.Sprintf("数据源：%s | 记录 %d | 更新时间 %s", source, info.RecordCount, info.UpdatedAt.Format("2006-01-02 15:04:05")))
 	s.log(fmt.Sprintf("数据已加载，来源=%s，记录=%d", info.URL, info.RecordCount))
+	s.warmAtlasIndex()
 	return nil
 }
 
@@ -231,12 +235,13 @@ func (s *uiState) handleImage(img image.Image, source string) error {
 func (s *uiState) renderResults(results []analyzer.Result) {
 	objects := make([]fyne.CanvasObject, 0, len(results))
 	for idx, result := range results {
-		candidates := make([]fyne.CanvasObject, 0, len(result.Candidates)+1)
+		details := make([]fyne.CanvasObject, 0, len(result.Candidates)+1)
 		metrics := container.NewGridWithColumns(2,
 			buildMetricRow("Size", fmt.Sprintf("%.3f", result.Measurement.Size)),
 			buildMetricRow("Weight", fmt.Sprintf("%.3f", result.Measurement.Weight)),
 		)
-		candidates = append(candidates, metrics)
+		details = append(details, metrics)
+
 		for candidateIndex, candidate := range result.Candidates {
 			title := fmt.Sprintf("%d. %s (%s)", candidateIndex+1, candidate.Pet, candidate.PetID)
 			meta := fmt.Sprintf("概率 %.2f%% | 参考尺寸 %s | 参考重量 %s | %s", candidate.Probability, candidate.EggDiameter, candidate.EggWeight, candidate.MatchType)
@@ -245,12 +250,13 @@ func (s *uiState) renderResults(results []analyzer.Result) {
 			if candidateIndex == 0 {
 				line.Importance = widget.HighImportance
 			}
-			candidates = append(candidates, line)
+			details = append(details, s.buildCandidateRow(candidate.PetID, line))
 		}
+
 		objects = append(objects, widget.NewCard(
 			fmt.Sprintf("蛋 %d", idx+1),
 			"",
-			container.NewVBox(candidates...),
+			container.NewVBox(details...),
 		))
 	}
 	if len(objects) == 0 {
@@ -258,6 +264,57 @@ func (s *uiState) renderResults(results []analyzer.Result) {
 	}
 	s.resultsBox.Objects = objects
 	s.resultsBox.Refresh()
+}
+
+func (s *uiState) warmAtlasIndex() {
+	if s.atlas == nil {
+		return
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := s.atlas.WarmIndex(ctx); err != nil {
+			s.log(fmt.Sprintf("预热精灵索引失败: %v", err))
+		}
+	}()
+}
+
+func (s *uiState) loadCandidateImage(petID string, target *canvas.Image) {
+	if s.atlas == nil || petID == "" {
+		return
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		img, err := s.atlas.Load(ctx, petID)
+		if err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				s.log(fmt.Sprintf("加载精灵图片失败(%s): %v", petID, err))
+			}
+			return
+		}
+
+		target.Image = img
+		target.Refresh()
+	}()
+}
+
+func (s *uiState) buildCandidateRow(petID string, content fyne.CanvasObject) fyne.CanvasObject {
+	sprite := canvas.NewImageFromImage(buildPetPlaceholderImage())
+	sprite.FillMode = canvas.ImageFillContain
+	sprite.SetMinSize(fyne.NewSize(72, 72))
+	s.loadCandidateImage(petID, sprite)
+
+	return container.NewBorder(
+		nil,
+		nil,
+		container.NewPadded(sprite),
+		nil,
+		content,
+	)
 }
 
 func buildMetricRow(name, value string) fyne.CanvasObject {
@@ -539,6 +596,16 @@ func buildPlaceholderImage() image.Image {
 	for y := 0; y < 320; y++ {
 		for x := 0; x < 520; x++ {
 			img.Set(x, y, color.RGBA{R: 244, G: 246, B: 248, A: 255})
+		}
+	}
+	return img
+}
+
+func buildPetPlaceholderImage() image.Image {
+	img := image.NewRGBA(image.Rect(0, 0, 180, 180))
+	for y := 0; y < 180; y++ {
+		for x := 0; x < 180; x++ {
+			img.Set(x, y, color.RGBA{R: 239, G: 232, B: 219, A: 255})
 		}
 	}
 	return img
