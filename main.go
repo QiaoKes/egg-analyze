@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,8 +9,12 @@ import (
 	_ "image/jpeg"
 	"image/png"
 	_ "image/png"
+	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
 	"egg-analyze/internal/analyzer"
@@ -26,7 +29,6 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -46,11 +48,11 @@ type uiState struct {
 	ocr             ocr.Recognizer
 	engine          *rocom.Engine
 	analyzeSvc      *analyzer.Service
-	mainVisible     bool
 	captureInFlight bool
 
 	currentImage image.Image
 	quitting     bool
+	cleanupOnce  sync.Once
 }
 
 func main() {
@@ -61,10 +63,8 @@ func main() {
 
 	application := app.NewWithID("egg-analyze")
 	application.Settings().SetTheme(newContrastTheme())
-	if icon, iconErr := buildTrayResource(); iconErr == nil {
-		application.SetIcon(icon)
-	}
 	window := application.NewWindow("洛克王国精灵蛋分析")
+	window.SetMaster()
 
 	state := &uiState{
 		app:     application,
@@ -76,18 +76,16 @@ func main() {
 
 	state.buildUI()
 	state.attachCloseBehavior()
+	state.attachSignalHandler()
 
 	application.Lifecycle().SetOnStarted(func() {
-		state.setupTray()
-		state.showWindow()
 		state.startupAsync()
 	})
 
 	window.Resize(fyne.NewSize(1360, 860))
-	state.mainVisible = true
 	window.Show()
 	application.Run()
-	state.hotkeys.Close()
+	state.cleanup()
 }
 
 func (s *uiState) buildUI() {
@@ -127,10 +125,13 @@ func (s *uiState) buildUI() {
 	mainSplit := container.NewHSplit(previewPanel, resultsPanel)
 	mainSplit.Offset = 0.54
 
+	logContent := container.NewScroll(container.NewPadded(s.logLabel))
+	logContent.SetMinSize(fyne.NewSize(0, 220))
+
 	logAccordion := widget.NewAccordion(
-		widget.NewAccordionItem("运行日志", container.NewScroll(container.NewPadded(s.logLabel))),
+		widget.NewAccordionItem("运行日志", logContent),
 	)
-	logAccordion.CloseAll()
+	logAccordion.Open(0)
 
 	content := container.NewBorder(
 		container.NewVBox(toolbar, statusStrip),
@@ -143,32 +144,6 @@ func (s *uiState) buildUI() {
 	s.window.SetContent(container.NewPadded(content))
 }
 
-func (s *uiState) setupTray() {
-	desk, ok := s.app.(desktop.App)
-	if !ok {
-		s.log("当前平台不支持系统托盘")
-		return
-	}
-
-	icon, err := buildTrayResource()
-	if err != nil {
-		s.log(fmt.Sprintf("托盘图标初始化失败: %v", err))
-	} else {
-		s.app.SetIcon(icon)
-	}
-	desk.SetSystemTrayMenu(fyne.NewMenu("洛克王国精灵蛋分析",
-		fyne.NewMenuItem("显示窗口", s.showWindow),
-		fyne.NewMenuItem("截图分析", func() {
-			s.beginCaptureSelection()
-		}),
-		fyne.NewMenuItem("刷新数据", func() {
-			s.run("刷新数据", s.reloadDataset)
-		}),
-		fyne.NewMenuItemSeparator(),
-		fyne.NewMenuItem("退出", s.quit),
-	))
-}
-
 func (s *uiState) attachCloseBehavior() {
 	s.window.SetCloseIntercept(func() {
 		if s.quitting {
@@ -176,10 +151,17 @@ func (s *uiState) attachCloseBehavior() {
 			s.window.Close()
 			return
 		}
-		s.window.Hide()
-		s.mainVisible = false
-		s.log("窗口已隐藏到托盘")
+		s.quit()
 	})
+}
+
+func (s *uiState) attachSignalHandler() {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-signals
+		s.quit()
+	}()
 }
 
 func (s *uiState) startupAsync() {
@@ -378,11 +360,7 @@ func (s *uiState) beginCaptureSelection() {
 		return
 	}
 
-	restoreWindow := s.mainVisible
-	if restoreWindow {
-		s.window.Hide()
-		s.mainVisible = false
-	}
+	s.window.Hide()
 
 	s.captureInFlight = true
 	s.setStatus("等待 Flameshot 框选")
@@ -400,9 +378,7 @@ func (s *uiState) beginCaptureSelection() {
 		case errors.Is(err, capture.ErrCancelled):
 			s.setStatus("准备就绪")
 			s.log("已取消截图")
-			if restoreWindow {
-				s.showWindow()
-			}
+			s.showWindow()
 		default:
 			s.showWindow()
 			s.setStatus("截图分析失败")
@@ -470,7 +446,6 @@ func (s *uiState) setStatus(message string) {
 
 func (s *uiState) showWindow() {
 	s.window.Show()
-	s.mainVisible = true
 	s.window.RequestFocus()
 }
 
@@ -529,48 +504,34 @@ func (s *uiState) buildEmptyResults() fyne.CanvasObject {
 }
 
 func (s *uiState) quit() {
+	if s.quitting {
+		return
+	}
 	s.quitting = true
-	s.hotkeys.Close()
 	s.window.SetCloseIntercept(nil)
+	go func() {
+		done := make(chan struct{})
+		go func() {
+			s.cleanup()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+		}
+		os.Exit(0)
+	}()
 	s.window.Close()
 }
 
-func buildTrayResource() (fyne.Resource, error) {
-	var buffer bytes.Buffer
-	if err := png.Encode(&buffer, buildTrayImage()); err != nil {
-		return nil, err
-	}
-	return fyne.NewStaticResource("tray.png", buffer.Bytes()), nil
-}
-
-func buildTrayImage() image.Image {
-	img := image.NewRGBA(image.Rect(0, 0, 32, 32))
-	bg := color.RGBA{R: 33, G: 37, B: 41, A: 255}
-	fg := color.RGBA{R: 255, G: 214, B: 10, A: 255}
-	hl := color.RGBA{R: 255, G: 255, B: 255, A: 255}
-
-	for y := 0; y < 32; y++ {
-		for x := 0; x < 32; x++ {
-			img.Set(x, y, bg)
+func (s *uiState) cleanup() {
+	s.cleanupOnce.Do(func() {
+		s.hotkeys.Close()
+		if closer, ok := s.ocr.(interface{ Close() error }); ok {
+			_ = closer.Close()
 		}
-	}
-
-	for y := 6; y < 26; y++ {
-		for x := 8; x < 24; x++ {
-			if (x-16)*(x-16)+(y-16)*(y-16) <= 90 {
-				img.Set(x, y, fg)
-			}
-		}
-	}
-
-	for y := 12; y < 20; y++ {
-		img.Set(15, y, hl)
-	}
-	for x := 14; x < 18; x++ {
-		img.Set(x, 20, hl)
-	}
-
-	return img
+	})
 }
 
 func buildPlaceholderImage() image.Image {

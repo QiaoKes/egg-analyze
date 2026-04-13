@@ -36,5 +36,7 @@ picture/synthetic/
 picture/synthetic_debug_*.png
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+build
+flameshot

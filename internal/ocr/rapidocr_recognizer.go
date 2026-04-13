@@ -56,6 +56,18 @@ func (r *rapidOCRRecognizer) Name() string {
 	return "rapidocr"
 }
 
+func (r *rapidOCRRecognizer) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.closeProcessLocked()
+	if r.tempDir != "" {
+		_ = os.RemoveAll(r.tempDir)
+		r.tempDir = ""
+	}
+	return nil
+}
+
 func (r *rapidOCRRecognizer) Recognize(ctx context.Context, img image.Image) ([]Line, error) {
 	batches, err := r.RecognizeBatch(ctx, []image.Image{img})
 	if err != nil {
@@ -123,6 +135,7 @@ func (r *rapidOCRRecognizer) ensureProcess() error {
 	}
 
 	cmd := exec.Command(r.python, r.scriptPath)
+	configureCommand(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
