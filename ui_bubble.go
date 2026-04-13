@@ -3,6 +3,7 @@ package main
 import (
 	"image/color"
 	"math"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -12,12 +13,12 @@ import (
 
 type bubbleWidget struct {
 	widget.BaseWidget
-	onTap       func()
-	onDragStart func()
-	onDragEnd   func()
-	dragged     bool
-	dragStarted bool
-	suppressTap bool
+	onTap            func()
+	onDragStart      func()
+	onDragEnd        func()
+	dragged          bool
+	dragStarted      bool
+	suppressTapUntil time.Time
 }
 
 func newBubbleWidget(onTap func(), onDragStart func(), onDragEnd func()) *bubbleWidget {
@@ -27,12 +28,11 @@ func newBubbleWidget(onTap func(), onDragStart func(), onDragEnd func()) *bubble
 }
 
 func (w *bubbleWidget) MinSize() fyne.Size {
-	return fyne.NewSize(74, 74)
+	return fyne.NewSize(78, 78)
 }
 
 func (w *bubbleWidget) Tapped(*fyne.PointEvent) {
-	if w.suppressTap {
-		w.suppressTap = false
+	if time.Now().Before(w.suppressTapUntil) {
 		return
 	}
 	if w.onTap != nil {
@@ -54,7 +54,7 @@ func (w *bubbleWidget) Dragged(event *fyne.DragEvent) {
 
 func (w *bubbleWidget) DragEnd() {
 	if w.dragged {
-		w.suppressTap = true
+		w.suppressTapUntil = time.Now().Add(160 * time.Millisecond)
 		if w.onDragEnd != nil {
 			w.onDragEnd()
 		}
@@ -64,12 +64,12 @@ func (w *bubbleWidget) DragEnd() {
 }
 
 func (w *bubbleWidget) CreateRenderer() fyne.WidgetRenderer {
-	shadow := canvas.NewCircle(color.NRGBA{R: 0x18, G: 0x1B, B: 0x22, A: 0x22})
-	halo := canvas.NewCircle(color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x3C})
-	face := canvas.NewCircle(color.NRGBA{R: 0xF9, G: 0xFB, B: 0xFF, A: 0xCC})
+	shadow := canvas.NewCircle(color.NRGBA{R: 0x18, G: 0x1B, B: 0x22, A: 0x12})
+	halo := canvas.NewCircle(color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x26})
+	face := canvas.NewCircle(color.NRGBA{R: 0xF9, G: 0xFB, B: 0xFF, A: 0xD8})
 	face.StrokeColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x90}
 	face.StrokeWidth = 1
-	inner := canvas.NewCircle(color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x44})
+	inner := canvas.NewCircle(color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x36})
 	icon := canvas.NewImageFromResource(theme.MediaPhotoIcon())
 	icon.FillMode = canvas.ImageFillContain
 	indicator := canvas.NewCircle(color.NRGBA{R: 0x57, G: 0x93, B: 0xFF, A: 0xFF})
@@ -101,24 +101,24 @@ type bubbleRenderer struct {
 }
 
 func (r *bubbleRenderer) Layout(size fyne.Size) {
-	r.shadow.Move(fyne.NewPos(5, 7))
-	r.shadow.Resize(fyne.NewSize(size.Width-7, size.Height-5))
+	r.shadow.Move(fyne.NewPos(8, 10))
+	r.shadow.Resize(fyne.NewSize(size.Width-16, size.Height-14))
 
-	r.halo.Move(fyne.NewPos(1, 1))
-	r.halo.Resize(fyne.NewSize(size.Width-2, size.Height-2))
+	r.halo.Move(fyne.NewPos(5, 5))
+	r.halo.Resize(fyne.NewSize(size.Width-10, size.Height-10))
 
-	r.face.Move(fyne.NewPos(2, 2))
-	r.face.Resize(fyne.NewSize(size.Width-4, size.Height-4))
+	r.face.Move(fyne.NewPos(7, 7))
+	r.face.Resize(fyne.NewSize(size.Width-14, size.Height-14))
 
-	r.inner.Move(fyne.NewPos(size.Width*0.18, size.Height*0.15))
-	r.inner.Resize(fyne.NewSize(size.Width*0.28, size.Height*0.2))
+	r.inner.Move(fyne.NewPos(size.Width*0.24, size.Height*0.2))
+	r.inner.Resize(fyne.NewSize(size.Width*0.22, size.Height*0.16))
 
-	iconSize := fyne.NewSize(size.Width*0.36, size.Height*0.36)
+	iconSize := fyne.NewSize(size.Width*0.3, size.Height*0.3)
 	r.icon.Move(fyne.NewPos((size.Width-iconSize.Width)/2, (size.Height-iconSize.Height)/2))
 	r.icon.Resize(iconSize)
 
-	indicatorSize := fyne.NewSize(12, 12)
-	r.indicator.Move(fyne.NewPos(size.Width-22, 12))
+	indicatorSize := fyne.NewSize(10, 10)
+	r.indicator.Move(fyne.NewPos(size.Width-24, 15))
 	r.indicator.Resize(indicatorSize)
 }
 

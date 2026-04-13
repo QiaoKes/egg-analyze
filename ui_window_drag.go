@@ -12,11 +12,12 @@ type windowDragLabel struct {
 	widget.BaseWidget
 	label   string
 	window  fyne.Window
+	align   fyne.TextAlign
 	started bool
 }
 
-func newWindowDragLabel(label string, win fyne.Window) *windowDragLabel {
-	w := &windowDragLabel{label: label, window: win}
+func newWindowDragLabel(label string, win fyne.Window, align fyne.TextAlign) *windowDragLabel {
+	w := &windowDragLabel{label: label, window: win, align: align}
 	w.ExtendBaseWidget(w)
 	return w
 }
@@ -26,7 +27,7 @@ func (w *windowDragLabel) MinSize() fyne.Size {
 	txt.TextSize = 17
 	txt.TextStyle = fyne.TextStyle{Bold: true}
 	size := txt.MinSize()
-	return fyne.NewSize(size.Width+6, size.Height+4)
+	return fyne.NewSize(size.Width+12, size.Height+10)
 }
 
 func (w *windowDragLabel) Dragged(event *fyne.DragEvent) {
@@ -47,6 +48,7 @@ func (w *windowDragLabel) CreateRenderer() fyne.WidgetRenderer {
 	text := canvas.NewText(w.label, color.NRGBA{R: 0x18, G: 0x1F, B: 0x2D, A: 0xFF})
 	text.TextStyle = fyne.TextStyle{Bold: true}
 	text.TextSize = 17
+	text.Alignment = w.align
 	return &windowDragLabelRenderer{widget: w, text: text, objects: []fyne.CanvasObject{text}}
 }
 
@@ -58,7 +60,19 @@ type windowDragLabelRenderer struct {
 
 func (r *windowDragLabelRenderer) Layout(size fyne.Size) {
 	min := r.text.MinSize()
-	r.text.Move(fyne.NewPos((size.Width-min.Width)/2, (size.Height-min.Height)/2))
+	x := float32(0)
+	switch r.widget.align {
+	case fyne.TextAlignLeading:
+		x = 4
+	case fyne.TextAlignTrailing:
+		x = size.Width - min.Width - 4
+	default:
+		x = (size.Width - min.Width) / 2
+	}
+	if x < 0 {
+		x = 0
+	}
+	r.text.Move(fyne.NewPos(x, (size.Height-min.Height)/2))
 	r.text.Resize(min)
 }
 
@@ -68,6 +82,7 @@ func (r *windowDragLabelRenderer) MinSize() fyne.Size {
 
 func (r *windowDragLabelRenderer) Refresh() {
 	r.text.Text = r.widget.label
+	r.text.Alignment = r.widget.align
 	r.text.Refresh()
 }
 

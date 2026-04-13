@@ -97,7 +97,7 @@ func main() {
 		state.startupAsync()
 	})
 
-	state.bubbleWindow.Resize(fyne.NewSize(74, 74))
+	state.bubbleWindow.Resize(fyne.NewSize(78, 78))
 	state.panelWindow.Resize(fyne.NewSize(360, 412))
 	state.resultWindow.Resize(fyne.NewSize(520, 680))
 	application.Run()
@@ -136,7 +136,7 @@ func (s *uiState) buildPanelUI() {
 	s.panelSource.Alignment = fyne.TextAlignCenter
 	s.panelSource.Wrapping = fyne.TextWrapWord
 
-	title := newWindowDragLabel("洛克王国精灵蛋分析", s.panelWindow)
+	title := newWindowDragLabel("洛克王国精灵蛋分析", s.panelWindow, fyne.TextAlignCenter)
 	description := widget.NewLabel("点击主按钮开始框选截图")
 	description.Alignment = fyne.TextAlignCenter
 	description.Wrapping = fyne.TextWrapWord
@@ -186,13 +186,13 @@ func (s *uiState) buildResultUI() {
 	scroll := container.NewScroll(container.NewPadded(s.resultList))
 	scroll.SetMinSize(fyne.NewSize(480, 600))
 
-	title := newWindowDragLabel("识别结果", s.resultWindow)
-	toolbar := container.NewBorder(nil, nil, title, container.NewHBox(
+	title := newWindowDragLabel("识别结果", s.resultWindow, fyne.TextAlignLeading)
+	toolbar := container.NewBorder(nil, nil, nil, container.NewHBox(
 		newSecondaryActionButton("再截一次", theme.MediaReplayIcon(), func() {
 			s.beginCaptureSelection()
 		}),
 		newSecondaryActionButton("隐藏", theme.VisibilityOffIcon(), s.hideResultWindow),
-	), nil)
+	), title)
 
 	body := container.NewBorder(
 		container.NewPadded(toolbar),
@@ -613,7 +613,7 @@ func (s *uiState) showBubbleWindow() {
 		s.bubblePrimed = true
 		s.bubbleWindow.Show()
 		configureNativeWindow(s.bubbleWindow, nativeWindowStyle{
-			CornerRadius:        37,
+			CornerRadius:        39,
 			Floating:            true,
 			Transparent:         true,
 			MovableByBackground: true,
@@ -627,7 +627,7 @@ func (s *uiState) showBubbleWindow() {
 	}
 	s.bubbleWindow.Show()
 	configureNativeWindow(s.bubbleWindow, nativeWindowStyle{
-		CornerRadius:        37,
+		CornerRadius:        39,
 		Floating:            true,
 		Transparent:         true,
 		MovableByBackground: true,
