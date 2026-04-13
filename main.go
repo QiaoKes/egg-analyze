@@ -30,9 +30,9 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
-	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	sqdialog "github.com/sqweek/dialog"
 )
 
 type uiState struct {
@@ -82,7 +82,7 @@ func main() {
 	}
 
 	state.bubbleWindow = state.newUtilityWindow("悬浮球")
-	state.panelWindow = state.newUtilityWindow("悬浮启动器")
+	state.panelWindow = state.newUtilityWindow("洛克王国精灵蛋分析")
 	state.resultWindow = state.newUtilityWindow("识别结果")
 	state.bubbleWindow.SetMaster()
 
@@ -99,7 +99,7 @@ func main() {
 	})
 
 	state.bubbleWindow.Resize(fyne.NewSize(74, 74))
-	state.panelWindow.Resize(fyne.NewSize(420, 480))
+	state.panelWindow.Resize(fyne.NewSize(360, 412))
 	state.resultWindow.Resize(fyne.NewSize(520, 680))
 	application.Run()
 	state.cleanup()
@@ -135,8 +135,8 @@ func (s *uiState) buildPanelUI() {
 	s.panelSource.Alignment = fyne.TextAlignCenter
 	s.panelSource.Wrapping = fyne.TextWrapWord
 
-	title := widget.NewLabelWithStyle("悬浮启动器", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
-	description := widget.NewLabel("点击主按钮开始框选截图；识别结果会在浮层里展示。")
+	title := newWindowDragLabel("洛克王国精灵蛋分析", s.panelWindow)
+	description := widget.NewLabel("点击主按钮开始框选截图")
 	description.Alignment = fyne.TextAlignCenter
 	description.Wrapping = fyne.TextWrapWord
 
@@ -162,17 +162,17 @@ func (s *uiState) buildPanelUI() {
 	)
 
 	content := container.NewVBox(
-		layoutSpacer(4),
+		layoutSpacer(2),
 		header,
-		layoutSpacer(4),
+		layoutSpacer(2),
 		description,
-		layoutSpacer(10),
-		captureButton,
 		layoutSpacer(8),
+		captureButton,
+		layoutSpacer(6),
 		s.panelStatus,
-		layoutSpacer(4),
+		layoutSpacer(2),
 		s.panelSource,
-		layoutSpacer(10),
+		layoutSpacer(8),
 		actions,
 	)
 
@@ -185,7 +185,7 @@ func (s *uiState) buildResultUI() {
 	scroll := container.NewScroll(container.NewPadded(s.resultList))
 	scroll.SetMinSize(fyne.NewSize(480, 600))
 
-	title := widget.NewLabelWithStyle("识别结果", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	title := newWindowDragLabel("识别结果", s.resultWindow)
 	toolbar := container.NewBorder(nil, nil, title, container.NewHBox(
 		newSecondaryActionButton("再截一次", theme.MediaReplayIcon(), func() {
 			s.beginCaptureSelection()
@@ -383,47 +383,73 @@ func (s *uiState) beginCaptureSelection() {
 }
 
 func (s *uiState) openImageDialog() {
-	fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-		if err != nil {
-			s.showError(err)
-			return
-		}
-		if reader == nil {
-			return
-		}
-		defer reader.Close()
+	panelWasVisible := s.panelVisible
+	resultWasVisible := s.resultVisible
+	s.hidePanelWindow()
+	s.hideResultWindow()
+	s.hideBubbleWindow()
 
-		img, _, decodeErr := image.Decode(reader)
-		if decodeErr != nil {
-			s.showError(decodeErr)
-			return
-		}
-
-		path := reader.URI().Path()
-		if dir := filepath.Dir(path); dir != "" && dir != "." {
-			cfg := s.config.Get()
-			cfg.LastImageDir = dir
-			_ = s.config.Save(cfg)
-		}
-
-		s.setStatus("图片分析处理中")
-		if analyzeErr := s.handleImage(img, path); analyzeErr != nil {
-			s.setStatus("图片分析失败")
-			s.showError(analyzeErr)
-			return
-		}
-		s.setStatus("图片分析完成")
-		s.showResultWindow()
-	}, s.dialogParent())
-	fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".png", ".jpg", ".jpeg"}))
-	if lastDir := strings.TrimSpace(s.config.Get().LastImageDir); lastDir != "" {
-		if uri := storage.NewFileURI(lastDir); uri != nil {
-			if lister, err := storage.ListerForURI(uri); err == nil {
-				fileDialog.SetLocation(lister)
-			}
+	restoreLauncher := func() {
+		switch {
+		case panelWasVisible:
+			s.showPanelWindow()
+		case resultWasVisible:
+			s.showResultWindow()
+		default:
+			s.showBubbleWindow()
 		}
 	}
-	fileDialog.Show()
+
+	chooser := sqdialog.File().Title("选择图片").Filter("Image Files", "png", "jpg", "jpeg")
+	if lastDir := strings.TrimSpace(s.config.Get().LastImageDir); lastDir != "" {
+		chooser = chooser.SetStartDir(lastDir)
+	}
+
+	path, err := chooser.Load()
+	if err != nil {
+		if errors.Is(err, sqdialog.ErrCancelled) {
+			restoreLauncher()
+			return
+		}
+		restoreLauncher()
+		s.showError(err)
+		return
+	}
+	if strings.TrimSpace(path) == "" {
+		restoreLauncher()
+		return
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		restoreLauncher()
+		s.showError(err)
+		return
+	}
+	defer file.Close()
+
+	img, _, decodeErr := image.Decode(file)
+	if decodeErr != nil {
+		restoreLauncher()
+		s.showError(decodeErr)
+		return
+	}
+
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		cfg := s.config.Get()
+		cfg.LastImageDir = dir
+		_ = s.config.Save(cfg)
+	}
+
+	s.setStatus("图片分析处理中")
+	if analyzeErr := s.handleImage(img, path); analyzeErr != nil {
+		s.setStatus("图片分析失败")
+		restoreLauncher()
+		s.showError(analyzeErr)
+		return
+	}
+	s.setStatus("图片分析完成")
+	s.showResultWindow()
 }
 
 func (s *uiState) handleImage(img image.Image, source string) error {
@@ -727,14 +753,20 @@ func (s *uiState) moveBubbleWindowBy(dx, dy float32) {
 	if runtime.GOOS == "darwin" {
 		return
 	}
+	scale := float32(1)
+	if canvas := s.bubbleWindow.Canvas(); canvas != nil {
+		scale = canvas.Scale()
+	}
 	frame, ok := getNativeWindowFrame(s.bubbleWindow)
 	if !ok {
 		return
 	}
-	setNativeWindowOrigin(s.bubbleWindow, frame.X+dx, frame.Y+dy)
+	moveX := dx * scale
+	moveY := dy * scale
+	setNativeWindowOrigin(s.bubbleWindow, frame.X+moveX, frame.Y+moveY)
 	s.bubbleAnchor = nativeWindowFrame{
-		X:      frame.X + dx,
-		Y:      frame.Y + dy,
+		X:      frame.X + moveX,
+		Y:      frame.Y + moveY,
 		Width:  frame.Width,
 		Height: frame.Height,
 	}

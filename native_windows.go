@@ -25,10 +25,14 @@ type nativeWindowFrame struct {
 
 var (
 	user32             = windows.NewLazySystemDLL("user32.dll")
+	gdi32              = windows.NewLazySystemDLL("gdi32.dll")
 	procGetWindowRect  = user32.NewProc("GetWindowRect")
 	procSetWindowPos   = user32.NewProc("SetWindowPos")
 	procMonitorFromWin = user32.NewProc("MonitorFromWindow")
 	procGetMonitorInfo = user32.NewProc("GetMonitorInfoW")
+	procSetWindowRgn   = user32.NewProc("SetWindowRgn")
+	procCreateRoundRgn = gdi32.NewProc("CreateRoundRectRgn")
+	procDeleteObject   = gdi32.NewProc("DeleteObject")
 )
 
 const (
@@ -80,6 +84,29 @@ func configureNativeWindow(win fyne.Window, style nativeWindowStyle) {
 			0,
 			swpNoMove|swpNoSize|swpNoActivate|swpShowWindow,
 		)
+
+		var r rect
+		ret, _, _ := procGetWindowRect.Call(winCtx.HWND, uintptr(unsafePointer(&r)))
+		if ret != 0 {
+			diameter := int32(style.CornerRadius * 2)
+			if diameter < 2 {
+				diameter = 2
+			}
+			rgn, _, _ := procCreateRoundRgn.Call(
+				0,
+				0,
+				uintptr((r.Right-r.Left)+1),
+				uintptr((r.Bottom-r.Top)+1),
+				uintptr(diameter),
+				uintptr(diameter),
+			)
+			if rgn != 0 {
+				ret, _, _ := procSetWindowRgn.Call(winCtx.HWND, rgn, 1)
+				if ret == 0 {
+					_, _, _ = procDeleteObject.Call(rgn)
+				}
+			}
+		}
 	})
 }
 

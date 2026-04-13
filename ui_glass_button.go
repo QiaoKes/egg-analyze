@@ -39,11 +39,11 @@ func newGlassButton(label string, icon fyne.Resource, style glassButtonStyle, on
 func (b *glassButton) MinSize() fyne.Size {
 	switch b.style {
 	case glassButtonCompact:
-		return fyne.NewSize(44, 44)
+		return fyne.NewSize(38, 38)
 	case glassButtonPrimary:
-		return fyne.NewSize(156, 58)
+		return fyne.NewSize(136, 48)
 	default:
-		return fyne.NewSize(152, 54)
+		return fyne.NewSize(132, 44)
 	}
 }
 
@@ -76,7 +76,7 @@ func (b *glassButton) CreateRenderer() fyne.WidgetRenderer {
 	}
 	label := canvas.NewText(b.label, color.NRGBA{R: 0x18, G: 0x1F, B: 0x2C, A: 0xFF})
 	label.TextStyle = fyne.TextStyle{Bold: true}
-	label.TextSize = 18
+	label.TextSize = 15
 
 	r := &glassButtonRenderer{
 		button:  b,
@@ -145,7 +145,7 @@ func (r *glassButtonRenderer) Layout(size fyne.Size) {
 	r.shine.Resize(fyne.NewSize(size.Width-8, shineHeight))
 
 	if r.button.style == glassButtonCompact {
-		iconSize := fyne.NewSize(18, 18)
+		iconSize := fyne.NewSize(16, 16)
 		r.icon.Move(fyne.NewPos((size.Width-iconSize.Width)/2, (size.Height-iconSize.Height)/2))
 		r.icon.Resize(iconSize)
 		r.label.Hide()
@@ -153,11 +153,11 @@ func (r *glassButtonRenderer) Layout(size fyne.Size) {
 	}
 
 	r.label.Show()
-	iconSize := fyne.NewSize(22, 22)
+	iconSize := fyne.NewSize(18, 18)
 	labelSize := r.label.MinSize()
 	totalWidth := labelSize.Width
 	if r.button.icon != nil {
-		totalWidth += iconSize.Width + 10
+		totalWidth += iconSize.Width + 8
 	}
 	startX := (size.Width - totalWidth) / 2
 	centerY := size.Height / 2
@@ -165,7 +165,7 @@ func (r *glassButtonRenderer) Layout(size fyne.Size) {
 	if r.button.icon != nil {
 		r.icon.Move(fyne.NewPos(startX, centerY-iconSize.Height/2))
 		r.icon.Resize(iconSize)
-		r.label.Move(fyne.NewPos(startX+iconSize.Width+10, centerY-labelSize.Height/2))
+		r.label.Move(fyne.NewPos(startX+iconSize.Width+8, centerY-labelSize.Height/2))
 	} else {
 		r.label.Move(fyne.NewPos(startX, centerY-labelSize.Height/2))
 	}
