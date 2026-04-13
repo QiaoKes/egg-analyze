@@ -231,6 +231,8 @@ func setNativeWindowOrigin(win fyne.Window, x, y float32) {
 	})
 }
 
+func beginNativeWindowDrag(fyne.Window) {}
+
 func boolToObjc(v bool) C.int {
 	if v {
 		return 1

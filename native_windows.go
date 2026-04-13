@@ -24,19 +24,24 @@ type nativeWindowFrame struct {
 }
 
 var (
-	user32             = windows.NewLazySystemDLL("user32.dll")
-	gdi32              = windows.NewLazySystemDLL("gdi32.dll")
-	procGetWindowRect  = user32.NewProc("GetWindowRect")
-	procSetWindowPos   = user32.NewProc("SetWindowPos")
-	procMonitorFromWin = user32.NewProc("MonitorFromWindow")
-	procGetMonitorInfo = user32.NewProc("GetMonitorInfoW")
-	procSetWindowRgn   = user32.NewProc("SetWindowRgn")
-	procCreateRoundRgn = gdi32.NewProc("CreateRoundRectRgn")
-	procDeleteObject   = gdi32.NewProc("DeleteObject")
+	user32               = windows.NewLazySystemDLL("user32.dll")
+	gdi32                = windows.NewLazySystemDLL("gdi32.dll")
+	procReleaseCapture   = user32.NewProc("ReleaseCapture")
+	procSendMessage      = user32.NewProc("SendMessageW")
+	procGetWindowRect    = user32.NewProc("GetWindowRect")
+	procSetWindowPos     = user32.NewProc("SetWindowPos")
+	procMonitorFromWin   = user32.NewProc("MonitorFromWindow")
+	procGetMonitorInfo   = user32.NewProc("GetMonitorInfoW")
+	procSetWindowRgn     = user32.NewProc("SetWindowRgn")
+	procCreateRoundRgn   = gdi32.NewProc("CreateRoundRectRgn")
+	procCreateEllipseRgn = gdi32.NewProc("CreateEllipticRgn")
+	procDeleteObject     = gdi32.NewProc("DeleteObject")
 )
 
 const (
 	monDefaultToNearest = 2
+	wmNCLButtonDown     = 0x00A1
+	htCaption           = 2
 
 	swpNoSize     = 0x0001
 	swpNoMove     = 0x0002
@@ -88,18 +93,9 @@ func configureNativeWindow(win fyne.Window, style nativeWindowStyle) {
 		var r rect
 		ret, _, _ := procGetWindowRect.Call(winCtx.HWND, uintptr(unsafePointer(&r)))
 		if ret != 0 {
-			diameter := int32(style.CornerRadius * 2)
-			if diameter < 2 {
-				diameter = 2
-			}
-			rgn, _, _ := procCreateRoundRgn.Call(
-				0,
-				0,
-				uintptr((r.Right-r.Left)+1),
-				uintptr((r.Bottom-r.Top)+1),
-				uintptr(diameter),
-				uintptr(diameter),
-			)
+			width := r.Right - r.Left
+			height := r.Bottom - r.Top
+			rgn := createWindowRegion(width, height, style)
 			if rgn != 0 {
 				ret, _, _ := procSetWindowRgn.Call(winCtx.HWND, rgn, 1)
 				if ret == 0 {
@@ -107,6 +103,22 @@ func configureNativeWindow(win fyne.Window, style nativeWindowStyle) {
 				}
 			}
 		}
+	})
+}
+
+func beginNativeWindowDrag(win fyne.Window) {
+	native, ok := win.(fynedriver.NativeWindow)
+	if !ok {
+		return
+	}
+
+	native.RunNative(func(context any) {
+		winCtx, ok := context.(fynedriver.WindowsWindowContext)
+		if !ok || winCtx.HWND == 0 {
+			return
+		}
+		_, _, _ = procReleaseCapture.Call()
+		_, _, _ = procSendMessage.Call(winCtx.HWND, wmNCLButtonDown, htCaption, 0)
 	})
 }
 
@@ -203,4 +215,35 @@ func setNativeWindowOrigin(win fyne.Window, x, y float32) {
 
 func unsafePointer[T any](v *T) uintptr {
 	return uintptr(unsafe.Pointer(v))
+}
+
+func createWindowRegion(width, height int32, style nativeWindowStyle) uintptr {
+	if width <= 0 || height <= 0 {
+		return 0
+	}
+	if style.CornerRadius*2 >= float64(minInt32(width, height))-2 {
+		rgn, _, _ := procCreateEllipseRgn.Call(0, 0, uintptr(width+1), uintptr(height+1))
+		return rgn
+	}
+
+	diameter := int32(style.CornerRadius * 2)
+	if diameter < 2 {
+		diameter = 2
+	}
+	rgn, _, _ := procCreateRoundRgn.Call(
+		0,
+		0,
+		uintptr(width+1),
+		uintptr(height+1),
+		uintptr(diameter),
+		uintptr(diameter),
+	)
+	return rgn
+}
+
+func minInt32(a, b int32) int32 {
+	if a < b {
+		return a
+	}
+	return b
 }

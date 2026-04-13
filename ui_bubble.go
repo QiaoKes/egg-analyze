@@ -13,14 +13,15 @@ import (
 type bubbleWidget struct {
 	widget.BaseWidget
 	onTap       func()
-	onDrag      func(dx, dy float32)
+	onDragStart func()
 	onDragEnd   func()
 	dragged     bool
+	dragStarted bool
 	suppressTap bool
 }
 
-func newBubbleWidget(onTap func(), onDrag func(dx, dy float32), onDragEnd func()) *bubbleWidget {
-	w := &bubbleWidget{onTap: onTap, onDrag: onDrag, onDragEnd: onDragEnd}
+func newBubbleWidget(onTap func(), onDragStart func(), onDragEnd func()) *bubbleWidget {
+	w := &bubbleWidget{onTap: onTap, onDragStart: onDragStart, onDragEnd: onDragEnd}
 	w.ExtendBaseWidget(w)
 	return w
 }
@@ -44,9 +45,10 @@ func (w *bubbleWidget) TappedSecondary(*fyne.PointEvent) {}
 func (w *bubbleWidget) Dragged(event *fyne.DragEvent) {
 	if math.Abs(float64(event.Dragged.DX)) >= 2 || math.Abs(float64(event.Dragged.DY)) >= 2 {
 		w.dragged = true
-	}
-	if w.onDrag != nil {
-		w.onDrag(event.Dragged.DX, event.Dragged.DY)
+		if !w.dragStarted && w.onDragStart != nil {
+			w.dragStarted = true
+			w.onDragStart()
+		}
 	}
 }
 
@@ -58,6 +60,7 @@ func (w *bubbleWidget) DragEnd() {
 		}
 	}
 	w.dragged = false
+	w.dragStarted = false
 }
 
 func (w *bubbleWidget) CreateRenderer() fyne.WidgetRenderer {

@@ -2,7 +2,6 @@ package main
 
 import (
 	"image/color"
-	"runtime"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -11,8 +10,9 @@ import (
 
 type windowDragLabel struct {
 	widget.BaseWidget
-	label  string
-	window fyne.Window
+	label   string
+	window  fyne.Window
+	started bool
 }
 
 func newWindowDragLabel(label string, win fyne.Window) *windowDragLabel {
@@ -30,21 +30,18 @@ func (w *windowDragLabel) MinSize() fyne.Size {
 }
 
 func (w *windowDragLabel) Dragged(event *fyne.DragEvent) {
-	if runtime.GOOS == "darwin" || w.window == nil {
+	if w.window == nil {
 		return
 	}
-	frame, ok := getNativeWindowFrame(w.window)
-	if !ok {
-		return
+	if !w.started {
+		w.started = true
+		beginNativeWindowDrag(w.window)
 	}
-	scale := float32(1)
-	if canvas := w.window.Canvas(); canvas != nil {
-		scale = canvas.Scale()
-	}
-	setNativeWindowOrigin(w.window, frame.X+event.Dragged.DX*scale, frame.Y+event.Dragged.DY*scale)
 }
 
-func (w *windowDragLabel) DragEnd() {}
+func (w *windowDragLabel) DragEnd() {
+	w.started = false
+}
 
 func (w *windowDragLabel) CreateRenderer() fyne.WidgetRenderer {
 	text := canvas.NewText(w.label, color.NRGBA{R: 0x18, G: 0x1F, B: 0x2D, A: 0xFF})
