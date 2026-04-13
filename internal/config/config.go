@@ -10,7 +10,7 @@ import (
 
 const (
 	appDirName          = "EggAnalyze"
-	defaultHotkey       = "Ctrl+Shift+Q"
+	defaultHotkey       = "Ctrl+Shift+W"
 	defaultDatasetURL   = "https://rocom.mfsky.qzz.io/data/egg-measurements-final.json"
 	configFileName      = "config.json"
 	datasetCacheName    = "egg-measurements-final.json"

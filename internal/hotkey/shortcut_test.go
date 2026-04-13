@@ -8,11 +8,11 @@ import (
 )
 
 func TestFormatShortcut(t *testing.T) {
-	value, err := FormatShortcut(fyne.KeyModifierControl|fyne.KeyModifierShift, fyne.KeyQ)
+	value, err := FormatShortcut(fyne.KeyModifierControl|fyne.KeyModifierShift, fyne.KeyW)
 	if err != nil {
 		t.Fatalf("FormatShortcut returned error: %v", err)
 	}
-	if value != "Ctrl+Shift+Q" {
+	if value != "Ctrl+Shift+W" {
 		t.Fatalf("FormatShortcut returned %q", value)
 	}
 }
