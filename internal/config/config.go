@@ -18,11 +18,14 @@ const (
 )
 
 type Config struct {
-	DatasetURL   string `json:"dataset_url"`
-	CaptureMode  string `json:"capture_mode"`
-	AutoRefresh  bool   `json:"auto_refresh"`
-	TopCandidate int    `json:"top_candidate"`
-	LastImageDir string `json:"last_image_dir"`
+	DatasetURL        string `json:"dataset_url"`
+	CaptureMode       string `json:"capture_mode"`
+	AutoRefresh       bool   `json:"auto_refresh"`
+	TopCandidate      int    `json:"top_candidate"`
+	LastImageDir      string `json:"last_image_dir"`
+	BubblePositionSet bool   `json:"bubble_position_set"`
+	BubbleX           int    `json:"bubble_x"`
+	BubbleY           int    `json:"bubble_y"`
 }
 
 type Manager struct {

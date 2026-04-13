@@ -57,6 +57,9 @@ type uiState struct {
 	panelVisible    bool
 	resultVisible   bool
 	bubblePrimed    bool
+	bubbleRestored  bool
+	bubbleAnchor    nativeWindowFrame
+	bubbleAnchorSet bool
 	quitting        bool
 	cleanupOnce     sync.Once
 }
@@ -95,8 +98,8 @@ func main() {
 	})
 
 	state.bubbleWindow.Resize(fyne.NewSize(74, 74))
-	state.panelWindow.Resize(fyne.NewSize(560, 650))
-	state.resultWindow.Resize(fyne.NewSize(560, 720))
+	state.panelWindow.Resize(fyne.NewSize(420, 480))
+	state.resultWindow.Resize(fyne.NewSize(520, 680))
 	application.Run()
 	state.cleanup()
 }
@@ -117,7 +120,7 @@ func (s *uiState) newUtilityWindow(title string) fyne.Window {
 }
 
 func (s *uiState) buildBubbleUI() {
-	bubble := newBubbleWidget(s.togglePanelWindow)
+	bubble := newBubbleWidget(s.togglePanelWindow, s.rememberBubbleAnchorSoon)
 	s.bubbleWindow.SetContent(container.NewStack(canvas.NewRectangle(color.Transparent), container.NewCenter(bubble)))
 }
 
@@ -132,7 +135,7 @@ func (s *uiState) buildPanelUI() {
 	s.panelSource.Wrapping = fyne.TextWrapWord
 
 	title := widget.NewLabelWithStyle("悬浮启动器", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
-	description := widget.NewLabel("点击大按钮开始框选截图；识别结果会在半透明结果面板中展示。")
+	description := widget.NewLabel("点击主按钮开始框选截图；识别结果会在浮层里展示。")
 	description.Alignment = fyne.TextAlignCenter
 	description.Wrapping = fyne.TextWrapWord
 
@@ -158,28 +161,28 @@ func (s *uiState) buildPanelUI() {
 	)
 
 	content := container.NewVBox(
-		layoutSpacer(8),
+		layoutSpacer(4),
 		header,
-		layoutSpacer(6),
+		layoutSpacer(4),
 		description,
-		layoutSpacer(14),
-		captureButton,
 		layoutSpacer(10),
+		captureButton,
+		layoutSpacer(8),
 		s.panelStatus,
-		layoutSpacer(6),
+		layoutSpacer(4),
 		s.panelSource,
-		layoutSpacer(14),
+		layoutSpacer(10),
 		actions,
 	)
 
-	panel := buildSurfaceCard(content, color.NRGBA{R: 0xF7, G: 0xF9, B: 0xFD, A: 0x84}, color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x5A}, 34)
-	s.panelWindow.SetContent(container.NewPadded(panel))
+	panel := buildSurfaceCard(content, color.NRGBA{R: 0xF7, G: 0xF9, B: 0xFD, A: 0x38}, color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x58}, 34)
+	s.panelWindow.SetContent(buildFloatingWindowContent(panel))
 }
 
 func (s *uiState) buildResultUI() {
 	s.resultList = container.NewVBox(s.buildEmptyResultCard())
 	scroll := container.NewScroll(container.NewPadded(s.resultList))
-	scroll.SetMinSize(fyne.NewSize(520, 640))
+	scroll.SetMinSize(fyne.NewSize(480, 600))
 
 	title := widget.NewLabelWithStyle("识别结果", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	toolbar := container.NewBorder(nil, nil, title, container.NewHBox(
@@ -197,22 +200,29 @@ func (s *uiState) buildResultUI() {
 		scroll,
 	)
 
-	glass := buildSurfaceCard(body, color.NRGBA{R: 0xF8, G: 0xFA, B: 0xFE, A: 0x76}, color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x4A}, 36)
-	s.resultWindow.SetContent(container.NewPadded(glass))
+	glass := buildSurfaceCard(body, color.NRGBA{R: 0xF8, G: 0xFA, B: 0xFE, A: 0x34}, color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x54}, 36)
+	s.resultWindow.SetContent(buildFloatingWindowContent(glass))
 }
 
 func buildSurfaceCard(content fyne.CanvasObject, fill color.Color, stroke color.Color, radius float32) fyne.CanvasObject {
-	shadow := canvas.NewRectangle(color.NRGBA{R: 0x16, G: 0x20, B: 0x2E, A: 0x08})
+	shadow := canvas.NewRectangle(color.NRGBA{R: 0x16, G: 0x20, B: 0x2E, A: 0x05})
 	shadow.CornerRadius = radius
 	shadow.Move(fyne.NewPos(0, 10))
 	bg := canvas.NewRectangle(fill)
 	bg.CornerRadius = radius
 	bg.StrokeColor = stroke
 	bg.StrokeWidth = 1
-	shine := canvas.NewRectangle(color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x16})
+	shine := canvas.NewRectangle(color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x12})
 	shine.CornerRadius = radius - 2
 	shine.Move(fyne.NewPos(4, 4))
 	return container.NewStack(shadow, bg, shine, container.NewPadded(content))
+}
+
+func buildFloatingWindowContent(card fyne.CanvasObject) fyne.CanvasObject {
+	return container.NewStack(
+		canvas.NewRectangle(color.Transparent),
+		container.NewCenter(card),
+	)
 }
 
 func layoutSpacer(height float32) fyne.CanvasObject {
@@ -463,8 +473,8 @@ func (s *uiState) renderResultCards(results []analyzer.Result) {
 				widget.NewLabelWithStyle(fmt.Sprintf("蛋 %d", idx+1), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 				container.NewVBox(details...),
 			),
-			color.NRGBA{R: 0xFB, G: 0xF8, B: 0xF1, A: 0xD8},
-			color.NRGBA{R: 0xE0, G: 0xD1, B: 0xB6, A: 0xD0},
+			color.NRGBA{R: 0xFB, G: 0xF8, B: 0xF1, A: 0x94},
+			color.NRGBA{R: 0xE0, G: 0xD1, B: 0xB6, A: 0xA4},
 			20,
 		))
 	}
@@ -478,7 +488,7 @@ func (s *uiState) renderResultCards(results []analyzer.Result) {
 func (s *uiState) buildEmptyResultCard() fyne.CanvasObject {
 	label := widget.NewLabel("暂无分析结果。\n先截图或导入图片，结果会按蛋分组显示。")
 	label.Wrapping = fyne.TextWrapWord
-	return buildSurfaceCard(label, color.NRGBA{R: 0xFB, G: 0xF8, B: 0xF1, A: 0xD8}, color.NRGBA{R: 0xE0, G: 0xD1, B: 0xB6, A: 0xD0}, 20)
+	return buildSurfaceCard(label, color.NRGBA{R: 0xFB, G: 0xF8, B: 0xF1, A: 0x94}, color.NRGBA{R: 0xE0, G: 0xD1, B: 0xB6, A: 0xA4}, 20)
 }
 
 func (s *uiState) buildCandidateRow(petID string, content fyne.CanvasObject) fyne.CanvasObject {
@@ -594,6 +604,7 @@ func (s *uiState) showBubbleWindow() {
 		Transparent:         true,
 		MovableByBackground: true,
 	})
+	s.restoreBubblePosition()
 	s.bubbleWindow.RequestFocus()
 }
 
@@ -602,16 +613,27 @@ func (s *uiState) hideBubbleWindow() {
 }
 
 func (s *uiState) showPanelWindow() {
+	s.rememberBubbleAnchor()
 	s.hideBubbleWindow()
 	s.panelWindow.Show()
-	configureNativeWindow(s.panelWindow, nativeWindowStyle{
+	style := nativeWindowStyle{
 		CornerRadius:        34,
 		Floating:            true,
 		Transparent:         true,
 		MovableByBackground: true,
-	})
+	}
+	configureNativeWindow(s.panelWindow, style)
+	s.placeWindowNearAnchor(s.panelWindow, 14)
 	s.panelWindow.RequestFocus()
 	s.panelVisible = true
+
+	// The first show may be re-centered by the toolkit; place it again after it settles.
+	go func() {
+		time.Sleep(22 * time.Millisecond)
+		configureNativeWindow(s.panelWindow, style)
+		s.placeWindowNearAnchor(s.panelWindow, 14)
+		s.panelWindow.RequestFocus()
+	}()
 }
 
 func (s *uiState) hidePanelWindow() {
@@ -621,20 +643,128 @@ func (s *uiState) hidePanelWindow() {
 }
 
 func (s *uiState) showResultWindow() {
+	if !s.panelVisible {
+		s.rememberBubbleAnchor()
+	}
+	if s.panelVisible {
+		s.panelWindow.Hide()
+		s.panelVisible = false
+	}
+	s.hideBubbleWindow()
 	s.resultWindow.Show()
-	configureNativeWindow(s.resultWindow, nativeWindowStyle{
+	style := nativeWindowStyle{
 		CornerRadius:        36,
 		Floating:            true,
 		Transparent:         true,
 		MovableByBackground: true,
-	})
+	}
+	configureNativeWindow(s.resultWindow, style)
+	s.placeWindowNearAnchor(s.resultWindow, 18)
 	s.resultWindow.RequestFocus()
 	s.resultVisible = true
+
+	// Re-raise once after the toolkit settles so the result window stays above the launcher.
+	go func() {
+		time.Sleep(22 * time.Millisecond)
+		configureNativeWindow(s.resultWindow, style)
+		s.placeWindowNearAnchor(s.resultWindow, 18)
+		s.resultWindow.RequestFocus()
+	}()
 }
 
 func (s *uiState) hideResultWindow() {
 	s.resultWindow.Hide()
 	s.resultVisible = false
+	if !s.panelVisible {
+		s.showBubbleWindow()
+	}
+}
+
+func (s *uiState) restoreBubblePosition() {
+	if s.bubbleRestored {
+		return
+	}
+	s.bubbleRestored = true
+
+	cfg := s.config.Get()
+	if cfg.BubblePositionSet {
+		setNativeWindowOrigin(s.bubbleWindow, float32(cfg.BubbleX), float32(cfg.BubbleY))
+	}
+	s.rememberBubbleAnchor()
+}
+
+func (s *uiState) rememberBubbleAnchor() {
+	frame, ok := getNativeWindowFrame(s.bubbleWindow)
+	if !ok {
+		return
+	}
+	s.bubbleAnchor = frame
+	s.bubbleAnchorSet = true
+
+	cfg := s.config.Get()
+	x := int(frame.X)
+	y := int(frame.Y)
+	if cfg.BubblePositionSet && cfg.BubbleX == x && cfg.BubbleY == y {
+		return
+	}
+	cfg.BubblePositionSet = true
+	cfg.BubbleX = x
+	cfg.BubbleY = y
+	if err := s.config.Save(cfg); err != nil {
+		fmt.Printf("save bubble position failed: %v\n", err)
+	}
+}
+
+func (s *uiState) rememberBubbleAnchorSoon() {
+	go func() {
+		time.Sleep(18 * time.Millisecond)
+		s.rememberBubbleAnchor()
+	}()
+}
+
+func (s *uiState) placeWindowNearAnchor(win fyne.Window, gap float32) {
+	if !s.bubbleAnchorSet {
+		return
+	}
+
+	frame, ok := getNativeWindowFrame(win)
+	if !ok {
+		return
+	}
+	visible, ok := getNativeVisibleFrame(win)
+	if !ok {
+		return
+	}
+
+	x := s.bubbleAnchor.X + (s.bubbleAnchor.Width-frame.Width)/2
+	minX := visible.X + 12
+	maxX := visible.X + visible.Width - frame.Width - 12
+	if maxX < minX {
+		maxX = minX
+	}
+	if x < minX {
+		x = minX
+	}
+	if x > maxX {
+		x = maxX
+	}
+
+	y := s.bubbleAnchor.Y - frame.Height - gap
+	if y < visible.Y+12 {
+		y = s.bubbleAnchor.Y + s.bubbleAnchor.Height + gap
+	}
+	maxY := visible.Y + visible.Height - frame.Height - 12
+	if maxY < visible.Y+12 {
+		maxY = visible.Y + 12
+	}
+	if y > maxY {
+		y = maxY
+	}
+	if y < visible.Y+12 {
+		y = visible.Y + 12
+	}
+
+	setNativeWindowOrigin(win, x, y)
 }
 
 func (s *uiState) quit() {

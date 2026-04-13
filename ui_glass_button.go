@@ -39,11 +39,11 @@ func newGlassButton(label string, icon fyne.Resource, style glassButtonStyle, on
 func (b *glassButton) MinSize() fyne.Size {
 	switch b.style {
 	case glassButtonCompact:
-		return fyne.NewSize(50, 50)
+		return fyne.NewSize(44, 44)
 	case glassButtonPrimary:
-		return fyne.NewSize(180, 68)
+		return fyne.NewSize(156, 58)
 	default:
-		return fyne.NewSize(180, 62)
+		return fyne.NewSize(152, 54)
 	}
 }
 
@@ -106,19 +106,19 @@ type glassButtonRenderer struct {
 func (r *glassButtonRenderer) applyStyle() {
 	switch r.button.style {
 	case glassButtonPrimary:
-		r.bg.FillColor = color.NRGBA{R: 0x76, G: 0xA1, B: 0xF8, A: 0xB8}
-		r.border.StrokeColor = color.NRGBA{R: 0xE2, G: 0xEC, B: 0xFF, A: 0x72}
-		r.shine.FillColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x14}
+		r.bg.FillColor = color.NRGBA{R: 0x76, G: 0xA1, B: 0xF8, A: 0x86}
+		r.border.StrokeColor = color.NRGBA{R: 0xE2, G: 0xEC, B: 0xFF, A: 0x66}
+		r.shine.FillColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x10}
 		r.label.Color = color.White
 	case glassButtonCompact:
-		r.bg.FillColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x46}
-		r.border.StrokeColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x4E}
-		r.shine.FillColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x10}
+		r.bg.FillColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x30}
+		r.border.StrokeColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x44}
+		r.shine.FillColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x0D}
 		r.label.Color = color.NRGBA{R: 0x18, G: 0x1F, B: 0x2C, A: 0xFF}
 	default:
-		r.bg.FillColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x42}
-		r.border.StrokeColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x46}
-		r.shine.FillColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x10}
+		r.bg.FillColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x2E}
+		r.border.StrokeColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x42}
+		r.shine.FillColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x0D}
 		r.label.Color = color.NRGBA{R: 0x18, G: 0x1F, B: 0x2C, A: 0xFF}
 	}
 	if r.button.icon != nil {

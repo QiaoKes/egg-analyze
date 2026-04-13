@@ -13,12 +13,13 @@ import (
 type bubbleWidget struct {
 	widget.BaseWidget
 	onTap       func()
+	onDragEnd   func()
 	dragged     bool
 	suppressTap bool
 }
 
-func newBubbleWidget(onTap func()) *bubbleWidget {
-	w := &bubbleWidget{onTap: onTap}
+func newBubbleWidget(onTap func(), onDragEnd func()) *bubbleWidget {
+	w := &bubbleWidget{onTap: onTap, onDragEnd: onDragEnd}
 	w.ExtendBaseWidget(w)
 	return w
 }
@@ -48,6 +49,9 @@ func (w *bubbleWidget) Dragged(event *fyne.DragEvent) {
 func (w *bubbleWidget) DragEnd() {
 	if w.dragged {
 		w.suppressTap = true
+		if w.onDragEnd != nil {
+			w.onDragEnd()
+		}
 	}
 	w.dragged = false
 }
