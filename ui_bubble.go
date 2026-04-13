@@ -63,23 +63,21 @@ func (w *bubbleWidget) DragEnd() {
 }
 
 func (w *bubbleWidget) CreateRenderer() fyne.WidgetRenderer {
-	shadow := canvas.NewCircle(color.NRGBA{R: 0x18, G: 0x1B, B: 0x22, A: 0x12})
-	halo := canvas.NewCircle(color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x16})
+	shadow := canvas.NewCircle(color.NRGBA{R: 0x18, G: 0x1B, B: 0x22, A: 0x10})
 	face := canvas.NewCircle(color.NRGBA{R: 0xF9, G: 0xFB, B: 0xFF, A: 0xD8})
 	face.StrokeColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x90}
 	face.StrokeWidth = 1
-	inner := canvas.NewCircle(color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x36})
+	inner := canvas.NewCircle(color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x30})
 	icon := canvas.NewImageFromResource(theme.MediaPhotoIcon())
 	icon.FillMode = canvas.ImageFillContain
 	indicator := canvas.NewCircle(color.NRGBA{R: 0x57, G: 0x93, B: 0xFF, A: 0xFF})
 	indicator.StrokeColor = color.White
 	indicator.StrokeWidth = 1.4
 
-	objects := []fyne.CanvasObject{shadow, halo, face, inner, icon, indicator}
+	objects := []fyne.CanvasObject{shadow, face, inner, icon, indicator}
 	return &bubbleRenderer{
 		widget:    w,
 		shadow:    shadow,
-		halo:      halo,
 		face:      face,
 		inner:     inner,
 		icon:      icon,
@@ -91,7 +89,6 @@ func (w *bubbleWidget) CreateRenderer() fyne.WidgetRenderer {
 type bubbleRenderer struct {
 	widget    *bubbleWidget
 	shadow    *canvas.Circle
-	halo      *canvas.Circle
 	face      *canvas.Circle
 	inner     *canvas.Circle
 	icon      *canvas.Image
@@ -100,24 +97,21 @@ type bubbleRenderer struct {
 }
 
 func (r *bubbleRenderer) Layout(size fyne.Size) {
-	r.shadow.Move(fyne.NewPos(7, 8))
-	r.shadow.Resize(fyne.NewSize(size.Width-14, size.Height-13))
+	r.shadow.Move(fyne.NewPos(6, 7))
+	r.shadow.Resize(fyne.NewSize(size.Width-12, size.Height-11))
 
-	r.halo.Move(fyne.NewPos(4, 4))
-	r.halo.Resize(fyne.NewSize(size.Width-8, size.Height-8))
-
-	r.face.Move(fyne.NewPos(5, 5))
-	r.face.Resize(fyne.NewSize(size.Width-10, size.Height-10))
+	r.face.Move(fyne.NewPos(2, 2))
+	r.face.Resize(fyne.NewSize(size.Width-4, size.Height-4))
 
 	r.inner.Move(fyne.NewPos(size.Width*0.23, size.Height*0.19))
-	r.inner.Resize(fyne.NewSize(size.Width*0.2, size.Height*0.14))
+	r.inner.Resize(fyne.NewSize(size.Width*0.18, size.Height*0.13))
 
-	iconSize := fyne.NewSize(size.Width*0.28, size.Height*0.28)
+	iconSize := fyne.NewSize(size.Width*0.32, size.Height*0.32)
 	r.icon.Move(fyne.NewPos((size.Width-iconSize.Width)/2, (size.Height-iconSize.Height)/2))
 	r.icon.Resize(iconSize)
 
 	indicatorSize := fyne.NewSize(10, 10)
-	r.indicator.Move(fyne.NewPos(size.Width-22, 14))
+	r.indicator.Move(fyne.NewPos(size.Width-21, 13))
 	r.indicator.Resize(indicatorSize)
 }
 
@@ -127,7 +121,6 @@ func (r *bubbleRenderer) MinSize() fyne.Size {
 
 func (r *bubbleRenderer) Refresh() {
 	canvas.Refresh(r.shadow)
-	canvas.Refresh(r.halo)
 	canvas.Refresh(r.face)
 	canvas.Refresh(r.inner)
 	canvas.Refresh(r.icon)

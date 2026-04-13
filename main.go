@@ -652,16 +652,8 @@ func (s *uiState) showPanelWindow() {
 	}
 	configureNativeWindow(s.panelWindow, style)
 	s.placeWindowNearAnchor(s.panelWindow, 14)
-	s.panelWindow.RequestFocus()
 	s.panelVisible = true
-
-	// The first show may be re-centered by the toolkit; place it again after it settles.
-	go func() {
-		time.Sleep(22 * time.Millisecond)
-		configureNativeWindow(s.panelWindow, style)
-		s.placeWindowNearAnchor(s.panelWindow, 14)
-		s.panelWindow.RequestFocus()
-	}()
+	s.ensureWindowReady(s.panelWindow, style, 14)
 }
 
 func (s *uiState) hidePanelWindow() {
@@ -688,16 +680,8 @@ func (s *uiState) showResultWindow() {
 	}
 	configureNativeWindow(s.resultWindow, style)
 	s.placeWindowNearAnchor(s.resultWindow, 18)
-	s.resultWindow.RequestFocus()
 	s.resultVisible = true
-
-	// Re-raise once after the toolkit settles so the result window stays above the launcher.
-	go func() {
-		time.Sleep(22 * time.Millisecond)
-		configureNativeWindow(s.resultWindow, style)
-		s.placeWindowNearAnchor(s.resultWindow, 18)
-		s.resultWindow.RequestFocus()
-	}()
+	s.ensureWindowReady(s.resultWindow, style, 18)
 }
 
 func (s *uiState) hideResultWindow() {
@@ -793,6 +777,20 @@ func (s *uiState) placeWindowNearAnchor(win fyne.Window, gap float32) {
 	}
 
 	setNativeWindowOrigin(win, x, y)
+}
+
+func (s *uiState) ensureWindowReady(win fyne.Window, style nativeWindowStyle, gap float32) {
+	win.RequestFocus()
+	go func() {
+		for _, delay := range []time.Duration{24 * time.Millisecond, 90 * time.Millisecond} {
+			time.Sleep(delay)
+			configureNativeWindow(win, style)
+			if gap >= 0 {
+				s.placeWindowNearAnchor(win, gap)
+			}
+			win.RequestFocus()
+		}
+	}()
 }
 
 func (s *uiState) quit() {
