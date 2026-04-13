@@ -13,13 +13,14 @@ import (
 type bubbleWidget struct {
 	widget.BaseWidget
 	onTap       func()
+	onDrag      func(dx, dy float32)
 	onDragEnd   func()
 	dragged     bool
 	suppressTap bool
 }
 
-func newBubbleWidget(onTap func(), onDragEnd func()) *bubbleWidget {
-	w := &bubbleWidget{onTap: onTap, onDragEnd: onDragEnd}
+func newBubbleWidget(onTap func(), onDrag func(dx, dy float32), onDragEnd func()) *bubbleWidget {
+	w := &bubbleWidget{onTap: onTap, onDrag: onDrag, onDragEnd: onDragEnd}
 	w.ExtendBaseWidget(w)
 	return w
 }
@@ -43,6 +44,9 @@ func (w *bubbleWidget) TappedSecondary(*fyne.PointEvent) {}
 func (w *bubbleWidget) Dragged(event *fyne.DragEvent) {
 	if math.Abs(float64(event.Dragged.DX)) >= 2 || math.Abs(float64(event.Dragged.DY)) >= 2 {
 		w.dragged = true
+	}
+	if w.onDrag != nil {
+		w.onDrag(event.Dragged.DX, event.Dragged.DY)
 	}
 }
 

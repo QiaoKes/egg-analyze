@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -120,7 +121,7 @@ func (s *uiState) newUtilityWindow(title string) fyne.Window {
 }
 
 func (s *uiState) buildBubbleUI() {
-	bubble := newBubbleWidget(s.togglePanelWindow, s.rememberBubbleAnchorSoon)
+	bubble := newBubbleWidget(s.togglePanelWindow, s.moveBubbleWindowBy, s.rememberBubbleAnchorSoon)
 	s.bubbleWindow.SetContent(container.NewStack(canvas.NewRectangle(color.Transparent), container.NewCenter(bubble)))
 }
 
@@ -720,6 +721,24 @@ func (s *uiState) rememberBubbleAnchorSoon() {
 		time.Sleep(18 * time.Millisecond)
 		s.rememberBubbleAnchor()
 	}()
+}
+
+func (s *uiState) moveBubbleWindowBy(dx, dy float32) {
+	if runtime.GOOS == "darwin" {
+		return
+	}
+	frame, ok := getNativeWindowFrame(s.bubbleWindow)
+	if !ok {
+		return
+	}
+	setNativeWindowOrigin(s.bubbleWindow, frame.X+dx, frame.Y+dy)
+	s.bubbleAnchor = nativeWindowFrame{
+		X:      frame.X + dx,
+		Y:      frame.Y + dy,
+		Width:  frame.Width,
+		Height: frame.Height,
+	}
+	s.bubbleAnchorSet = true
 }
 
 func (s *uiState) placeWindowNearAnchor(win fyne.Window, gap float32) {
