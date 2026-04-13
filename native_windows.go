@@ -3,9 +3,13 @@
 package main
 
 import (
+	"bytes"
 	"fyne.io/fyne/v2"
 	fynedriver "fyne.io/fyne/v2/driver"
 	"golang.org/x/sys/windows"
+	"image"
+	_ "image/png"
+	"sync"
 	"unsafe"
 )
 
@@ -33,8 +37,10 @@ var (
 	procMonitorFromWin   = user32.NewProc("MonitorFromWindow")
 	procGetMonitorInfo   = user32.NewProc("GetMonitorInfoW")
 	procSetWindowRgn     = user32.NewProc("SetWindowRgn")
+	procCreateRectRgn    = gdi32.NewProc("CreateRectRgn")
 	procCreateRoundRgn   = gdi32.NewProc("CreateRoundRectRgn")
 	procCreateEllipseRgn = gdi32.NewProc("CreateEllipticRgn")
+	procCombineRgn       = gdi32.NewProc("CombineRgn")
 	procDeleteObject     = gdi32.NewProc("DeleteObject")
 )
 
@@ -51,6 +57,8 @@ const (
 
 	hwndTopMost   = ^uintptr(0) // ((HWND)-1)
 	hwndNoTopMost = ^uintptr(1) // ((HWND)-2)
+
+	rgnOr = 2
 )
 
 type rect struct {
@@ -63,6 +71,12 @@ type monitorInfo struct {
 	RcWork    rect
 	DwFlags   uint32
 }
+
+var (
+	bubbleMaskOnce sync.Once
+	bubbleMaskImg  image.Image
+	bubbleMaskErr  error
+)
 
 func configureNativeWindow(win fyne.Window, style nativeWindowStyle) {
 	native, ok := win.(fynedriver.NativeWindow)
@@ -221,6 +235,11 @@ func createWindowRegion(width, height int32, style nativeWindowStyle) uintptr {
 	if width <= 0 || height <= 0 {
 		return 0
 	}
+	if width == height && width <= 64 {
+		if rgn := createBubbleAlphaRegion(width, height); rgn != 0 {
+			return rgn
+		}
+	}
 	if style.CornerRadius*2 >= float64(minInt32(width, height))-2 {
 		rgn, _, _ := procCreateEllipseRgn.Call(0, 0, uintptr(width+1), uintptr(height+1))
 		return rgn
@@ -246,4 +265,71 @@ func minInt32(a, b int32) int32 {
 		return a
 	}
 	return b
+}
+
+func createBubbleAlphaRegion(width, height int32) uintptr {
+	img, err := loadBubbleMaskImage()
+	if err != nil || img == nil {
+		return 0
+	}
+
+	bounds := img.Bounds()
+	srcW := bounds.Dx()
+	srcH := bounds.Dy()
+	if srcW == 0 || srcH == 0 {
+		return 0
+	}
+
+	mainRgn, _, _ := procCreateRectRgn.Call(0, 0, 0, 0)
+	if mainRgn == 0 {
+		return 0
+	}
+
+	const alphaThreshold = 72
+	for y := int32(0); y < height; y++ {
+		srcY := bounds.Min.Y + int((float64(y)+0.5)*float64(srcH)/float64(height))
+		if srcY >= bounds.Max.Y {
+			srcY = bounds.Max.Y - 1
+		}
+
+		runStart := int32(-1)
+		for x := int32(0); x < width; x++ {
+			srcX := bounds.Min.X + int((float64(x)+0.5)*float64(srcW)/float64(width))
+			if srcX >= bounds.Max.X {
+				srcX = bounds.Max.X - 1
+			}
+
+			_, _, _, a := img.At(srcX, srcY).RGBA()
+			opaque := uint8(a>>8) >= alphaThreshold
+			if opaque && runStart < 0 {
+				runStart = x
+			}
+			if (!opaque || x == width-1) && runStart >= 0 {
+				runEnd := x
+				if opaque && x == width-1 {
+					runEnd = x + 1
+				}
+				tmpRgn, _, _ := procCreateRectRgn.Call(
+					uintptr(runStart),
+					uintptr(y),
+					uintptr(runEnd),
+					uintptr(y+1),
+				)
+				if tmpRgn != 0 {
+					_, _, _ = procCombineRgn.Call(mainRgn, mainRgn, tmpRgn, rgnOr)
+					_, _, _ = procDeleteObject.Call(tmpRgn)
+				}
+				runStart = -1
+			}
+		}
+	}
+
+	return mainRgn
+}
+
+func loadBubbleMaskImage() (image.Image, error) {
+	bubbleMaskOnce.Do(func() {
+		bubbleMaskImg, _, bubbleMaskErr = image.Decode(bytes.NewReader(bubblePNG))
+	})
+	return bubbleMaskImg, bubbleMaskErr
 }
