@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -10,7 +11,6 @@ import (
 
 const (
 	appDirName          = "EggAnalyze"
-	defaultHotkey       = "Ctrl+Shift+W"
 	defaultDatasetURL   = "https://rocom.mfsky.qzz.io/data/egg-measurements-final.json"
 	configFileName      = "config.json"
 	datasetCacheName    = "egg-measurements-final.json"
@@ -18,7 +18,6 @@ const (
 )
 
 type Config struct {
-	Hotkey       string `json:"hotkey"`
 	DatasetURL   string `json:"dataset_url"`
 	CaptureMode  string `json:"capture_mode"`
 	AutoRefresh  bool   `json:"auto_refresh"`
@@ -34,7 +33,6 @@ type Manager struct {
 
 func Default() Config {
 	return Config{
-		Hotkey:       defaultHotkey,
 		DatasetURL:   defaultDatasetURL,
 		CaptureMode:  "primary",
 		AutoRefresh:  true,
@@ -65,6 +63,13 @@ func Load() (*Manager, error) {
 			return manager, nil
 		}
 		return nil, err
+	}
+
+	if len(bytes.TrimSpace(data)) == 0 {
+		if saveErr := manager.Save(manager.cfg); saveErr != nil {
+			return nil, saveErr
+		}
+		return manager, nil
 	}
 
 	var cfg Config
@@ -124,9 +129,6 @@ func LastCapturePath() (string, error) {
 
 func normalize(cfg Config) Config {
 	def := Default()
-	if cfg.Hotkey == "" {
-		cfg.Hotkey = def.Hotkey
-	}
 	if cfg.DatasetURL == "" {
 		cfg.DatasetURL = def.DatasetURL
 	}

@@ -7,7 +7,6 @@ import (
 	"image"
 	"image/color"
 	_ "image/jpeg"
-	"image/png"
 	_ "image/png"
 	"os"
 	"os/signal"
@@ -21,7 +20,6 @@ import (
 	"egg-analyze/internal/atlas"
 	"egg-analyze/internal/capture"
 	"egg-analyze/internal/config"
-	"egg-analyze/internal/hotkey"
 	"egg-analyze/internal/ocr"
 	"egg-analyze/internal/rocom"
 
@@ -37,25 +35,30 @@ import (
 )
 
 type uiState struct {
-	app         fyne.App
-	window      fyne.Window
-	statusLabel *widget.Label
-	sourceLabel *widget.Label
-	logLabel    *widget.Label
-	resultsBox  *fyne.Container
-	previewView *canvas.Image
+	app          fyne.App
+	bubbleWindow fyne.Window
+	panelWindow  fyne.Window
+	resultWindow fyne.Window
 
-	config          *config.Manager
-	hotkeys         *hotkey.Manager
-	ocr             ocr.Recognizer
-	atlas           *atlas.Service
-	engine          *rocom.Engine
-	analyzeSvc      *analyzer.Service
-	captureInFlight bool
+	panelStatus *widget.Label
+	panelSource *widget.Label
+	resultList  *fyne.Container
 
+	config *config.Manager
+	ocr    ocr.Recognizer
+	atlas  *atlas.Service
+
+	engine       *rocom.Engine
+	analyzeSvc   *analyzer.Service
+	results      []analyzer.Result
 	currentImage image.Image
-	quitting     bool
-	cleanupOnce  sync.Once
+
+	captureInFlight bool
+	panelVisible    bool
+	resultVisible   bool
+	bubblePrimed    bool
+	quitting        bool
+	cleanupOnce     sync.Once
 }
 
 func main() {
@@ -64,98 +67,207 @@ func main() {
 		panic(err)
 	}
 
-	application := app.NewWithID("egg-analyze")
+	application := app.New()
 	application.Settings().SetTheme(newContrastTheme())
-	window := application.NewWindow("洛克王国精灵蛋分析")
-	window.SetMaster()
 
 	state := &uiState{
-		app:     application,
-		window:  window,
-		config:  cfgMgr,
-		hotkeys: hotkey.NewManager(),
-		ocr:     ocr.New(),
-		atlas:   atlas.New(),
+		app:    application,
+		config: cfgMgr,
+		ocr:    ocr.New(),
+		atlas:  atlas.New(),
 	}
 
-	state.buildUI()
+	state.bubbleWindow = state.newUtilityWindow("悬浮球")
+	state.panelWindow = state.newUtilityWindow("悬浮启动器")
+	state.resultWindow = state.newUtilityWindow("识别结果")
+	state.bubbleWindow.SetMaster()
+
+	state.buildBubbleUI()
+	state.buildPanelUI()
+	state.buildResultUI()
+	state.configureNativeWindows()
 	state.attachCloseBehavior()
 	state.attachSignalHandler()
 
 	application.Lifecycle().SetOnStarted(func() {
+		state.showBubbleWindow()
 		state.startupAsync()
 	})
 
-	window.Resize(fyne.NewSize(1360, 860))
-	window.Show()
+	state.bubbleWindow.Resize(fyne.NewSize(74, 74))
+	state.panelWindow.Resize(fyne.NewSize(560, 650))
+	state.resultWindow.Resize(fyne.NewSize(560, 720))
 	application.Run()
 	state.cleanup()
 }
 
-func (s *uiState) buildUI() {
-	s.statusLabel = widget.NewLabel("准备就绪")
-	s.sourceLabel = widget.NewLabel("数据源：未加载")
+func (s *uiState) newUtilityWindow(title string) fyne.Window {
+	if driver, ok := s.app.Driver().(desktop.Driver); ok {
+		win := driver.CreateSplashWindow()
+		win.SetTitle(title)
+		win.SetFixedSize(true)
+		win.SetPadded(false)
+		return win
+	}
 
-	s.logLabel = widget.NewLabel("启动完成，等待操作。")
-	s.logLabel.Wrapping = fyne.TextWrapWord
-	s.logLabel.TextStyle = fyne.TextStyle{Monospace: true}
+	win := s.app.NewWindow(title)
+	win.SetFixedSize(true)
+	win.SetPadded(false)
+	return win
+}
 
-	s.resultsBox = container.NewVBox(s.buildEmptyResults())
+func (s *uiState) buildBubbleUI() {
+	bubble := newBubbleWidget(s.togglePanelWindow)
+	s.bubbleWindow.SetContent(container.NewStack(canvas.NewRectangle(color.Transparent), container.NewCenter(bubble)))
+}
 
-	s.previewView = canvas.NewImageFromImage(buildPlaceholderImage())
-	s.previewView.FillMode = canvas.ImageFillContain
-	s.previewView.SetMinSize(fyne.NewSize(720, 520))
+func (s *uiState) buildPanelUI() {
+	s.panelStatus = widget.NewLabel("准备就绪")
+	s.panelStatus.Alignment = fyne.TextAlignCenter
+	s.panelStatus.Wrapping = fyne.TextWrapWord
+	s.panelStatus.TextStyle = fyne.TextStyle{Bold: true}
 
-	toolbar := container.NewHBox(
-		widget.NewButton("截图分析", func() {
-			s.beginCaptureSelection()
-		}),
-		widget.NewButton("打开图片", s.openImageDialog),
-		widget.NewButton("刷新数据", func() {
+	s.panelSource = widget.NewLabel("数据源：启动中")
+	s.panelSource.Alignment = fyne.TextAlignCenter
+	s.panelSource.Wrapping = fyne.TextWrapWord
+
+	title := widget.NewLabelWithStyle("悬浮启动器", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	description := widget.NewLabel("点击大按钮开始框选截图；识别结果会在半透明结果面板中展示。")
+	description.Alignment = fyne.TextAlignCenter
+	description.Wrapping = fyne.TextWrapWord
+
+	header := container.NewBorder(
+		nil,
+		nil,
+		nil,
+		newCompactGlassButton(theme.WindowMinimizeIcon(), s.hidePanelWindow),
+		title,
+	)
+
+	captureButton := newPrimaryCaptureButton(func() {
+		s.beginCaptureSelection()
+	})
+
+	actions := container.NewGridWithColumns(2,
+		newSecondaryActionButton("打开图片", theme.FolderOpenIcon(), s.openImageDialog),
+		newSecondaryActionButton("刷新数据", theme.ViewRefreshIcon(), func() {
 			s.run("刷新数据", s.reloadDataset)
 		}),
-		widget.NewButton("保存截图", s.saveCurrentCapture),
-		widget.NewButton("设置", s.openSettingsDialog),
+		newSecondaryActionButton("查看结果", theme.VisibilityIcon(), s.showResultWindow),
+		newSecondaryActionButton("退出", theme.CancelIcon(), s.quit),
 	)
 
-	statusStrip := container.NewGridWithColumns(2,
-		widget.NewCard("当前状态", "", s.statusLabel),
-		widget.NewCard("数据源", "", s.sourceLabel),
+	content := container.NewVBox(
+		layoutSpacer(8),
+		header,
+		layoutSpacer(6),
+		description,
+		layoutSpacer(14),
+		captureButton,
+		layoutSpacer(10),
+		s.panelStatus,
+		layoutSpacer(6),
+		s.panelSource,
+		layoutSpacer(14),
+		actions,
 	)
 
-	previewPanel := widget.NewCard("截图预览", "用于确认 OCR 是否读对区域和数字", container.NewPadded(container.NewCenter(s.previewView)))
-	resultsPanel := widget.NewCard("分析结果", "按蛋分组查看 size / weight 与候选概率", container.NewScroll(container.NewPadded(s.resultsBox)))
+	panel := buildSurfaceCard(content, color.NRGBA{R: 0xF7, G: 0xF9, B: 0xFD, A: 0x84}, color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x5A}, 34)
+	s.panelWindow.SetContent(container.NewPadded(panel))
+}
 
-	mainSplit := container.NewHSplit(previewPanel, resultsPanel)
-	mainSplit.Offset = 0.54
+func (s *uiState) buildResultUI() {
+	s.resultList = container.NewVBox(s.buildEmptyResultCard())
+	scroll := container.NewScroll(container.NewPadded(s.resultList))
+	scroll.SetMinSize(fyne.NewSize(520, 640))
 
-	logContent := container.NewScroll(container.NewPadded(s.logLabel))
-	logContent.SetMinSize(fyne.NewSize(0, 220))
+	title := widget.NewLabelWithStyle("识别结果", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	toolbar := container.NewBorder(nil, nil, title, container.NewHBox(
+		newSecondaryActionButton("再截一次", theme.MediaReplayIcon(), func() {
+			s.beginCaptureSelection()
+		}),
+		newSecondaryActionButton("隐藏", theme.VisibilityOffIcon(), s.hideResultWindow),
+	), nil)
 
-	logAccordion := widget.NewAccordion(
-		widget.NewAccordionItem("运行日志", logContent),
-	)
-	logAccordion.Open(0)
-
-	content := container.NewBorder(
-		container.NewVBox(toolbar, statusStrip),
-		logAccordion,
+	body := container.NewBorder(
+		container.NewPadded(toolbar),
 		nil,
 		nil,
-		mainSplit,
+		nil,
+		scroll,
 	)
 
-	s.window.SetContent(container.NewPadded(content))
+	glass := buildSurfaceCard(body, color.NRGBA{R: 0xF8, G: 0xFA, B: 0xFE, A: 0x76}, color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x4A}, 36)
+	s.resultWindow.SetContent(container.NewPadded(glass))
+}
+
+func buildSurfaceCard(content fyne.CanvasObject, fill color.Color, stroke color.Color, radius float32) fyne.CanvasObject {
+	shadow := canvas.NewRectangle(color.NRGBA{R: 0x16, G: 0x20, B: 0x2E, A: 0x08})
+	shadow.CornerRadius = radius
+	shadow.Move(fyne.NewPos(0, 10))
+	bg := canvas.NewRectangle(fill)
+	bg.CornerRadius = radius
+	bg.StrokeColor = stroke
+	bg.StrokeWidth = 1
+	shine := canvas.NewRectangle(color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x16})
+	shine.CornerRadius = radius - 2
+	shine.Move(fyne.NewPos(4, 4))
+	return container.NewStack(shadow, bg, shine, container.NewPadded(content))
+}
+
+func layoutSpacer(height float32) fyne.CanvasObject {
+	spacer := canvas.NewRectangle(color.Transparent)
+	spacer.SetMinSize(fyne.NewSize(1, height))
+	return spacer
+}
+
+func (s *uiState) configureNativeWindows() {
+	configureNativeWindow(s.bubbleWindow, nativeWindowStyle{
+		CornerRadius:        37,
+		Floating:            true,
+		Transparent:         true,
+		MovableByBackground: true,
+	})
+	configureNativeWindow(s.panelWindow, nativeWindowStyle{
+		CornerRadius:        34,
+		Floating:            true,
+		Transparent:         true,
+		MovableByBackground: true,
+	})
+	configureNativeWindow(s.resultWindow, nativeWindowStyle{
+		CornerRadius:        36,
+		Floating:            true,
+		Transparent:         true,
+		MovableByBackground: true,
+	})
 }
 
 func (s *uiState) attachCloseBehavior() {
-	s.window.SetCloseIntercept(func() {
+	s.bubbleWindow.SetCloseIntercept(func() {
 		if s.quitting {
-			s.window.SetCloseIntercept(nil)
-			s.window.Close()
+			s.bubbleWindow.SetCloseIntercept(nil)
+			s.bubbleWindow.Close()
 			return
 		}
 		s.quit()
+	})
+
+	s.panelWindow.SetCloseIntercept(func() {
+		if s.quitting {
+			s.panelWindow.SetCloseIntercept(nil)
+			s.panelWindow.Close()
+			return
+		}
+		s.hidePanelWindow()
+	})
+
+	s.resultWindow.SetCloseIntercept(func() {
+		if s.quitting {
+			s.resultWindow.SetCloseIntercept(nil)
+			s.resultWindow.Close()
+			return
+		}
+		s.hideResultWindow()
 	})
 }
 
@@ -173,14 +285,10 @@ func (s *uiState) startupAsync() {
 		s.setStatus("启动中，正在加载数据")
 		if err := s.reloadDataset(); err != nil {
 			s.setStatus("数据加载失败")
-			s.log(fmt.Sprintf("数据加载失败: %v", err))
-		} else {
-			s.setStatus("数据已加载")
+			s.showError(err)
+			return
 		}
-
-		if err := s.registerHotkey(s.config.Get().Hotkey); err != nil {
-			s.log(fmt.Sprintf("快捷键注册失败: %v", err))
-		}
+		s.setStatus("准备就绪")
 	}()
 }
 
@@ -205,15 +313,111 @@ func (s *uiState) reloadDataset() error {
 		source = "本地缓存"
 	}
 
-	s.sourceLabel.SetText(fmt.Sprintf("数据源：%s | 记录 %d | 更新时间 %s", source, info.RecordCount, info.UpdatedAt.Format("2006-01-02 15:04:05")))
-	s.log(fmt.Sprintf("数据已加载，来源=%s，记录=%d", info.URL, info.RecordCount))
+	s.panelSource.SetText(fmt.Sprintf("数据源：%s | 记录 %d | 更新时间\n%s", source, info.RecordCount, info.UpdatedAt.Format("2006-01-02 15:04:05")))
 	s.warmAtlasIndex()
 	return nil
 }
 
+func (s *uiState) beginCaptureSelection() {
+	if s.captureInFlight {
+		return
+	}
+	if s.analyzeSvc == nil {
+		err := fmt.Errorf("数据尚未加载，请先点击“刷新数据”")
+		s.setStatus("截图分析失败")
+		s.showError(err)
+		return
+	}
+
+	panelWasVisible := s.panelVisible
+	resultWasVisible := s.resultVisible
+	s.captureInFlight = true
+	s.setStatus("等待 Flameshot 框选")
+	s.hidePanelWindow()
+	s.hideResultWindow()
+	s.hideBubbleWindow()
+
+	go func() {
+		time.Sleep(140 * time.Millisecond)
+
+		img, err := capture.CaptureWithFlameshot(context.Background())
+		s.captureInFlight = false
+		s.showBubbleWindow()
+		if panelWasVisible {
+			s.showPanelWindow()
+		}
+
+		switch {
+		case err == nil:
+			s.run("截图分析", func() error {
+				analyzeErr := s.handleImage(img, "Flameshot 截图")
+				if analyzeErr == nil {
+					s.showResultWindow()
+				}
+				return analyzeErr
+			})
+		case errors.Is(err, capture.ErrCancelled):
+			s.setStatus("准备就绪")
+			if resultWasVisible {
+				s.showResultWindow()
+			}
+		default:
+			s.setStatus("截图分析失败")
+			if resultWasVisible {
+				s.showResultWindow()
+			}
+			s.showError(err)
+		}
+	}()
+}
+
+func (s *uiState) openImageDialog() {
+	fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+		if err != nil {
+			s.showError(err)
+			return
+		}
+		if reader == nil {
+			return
+		}
+		defer reader.Close()
+
+		img, _, decodeErr := image.Decode(reader)
+		if decodeErr != nil {
+			s.showError(decodeErr)
+			return
+		}
+
+		path := reader.URI().Path()
+		if dir := filepath.Dir(path); dir != "" && dir != "." {
+			cfg := s.config.Get()
+			cfg.LastImageDir = dir
+			_ = s.config.Save(cfg)
+		}
+
+		s.setStatus("图片分析处理中")
+		if analyzeErr := s.handleImage(img, path); analyzeErr != nil {
+			s.setStatus("图片分析失败")
+			s.showError(analyzeErr)
+			return
+		}
+		s.setStatus("图片分析完成")
+		s.showResultWindow()
+	}, s.dialogParent())
+	fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".png", ".jpg", ".jpeg"}))
+	if lastDir := strings.TrimSpace(s.config.Get().LastImageDir); lastDir != "" {
+		if uri := storage.NewFileURI(lastDir); uri != nil {
+			if lister, err := storage.ListerForURI(uri); err == nil {
+				fileDialog.SetLocation(lister)
+			}
+		}
+	}
+	fileDialog.Show()
+}
+
 func (s *uiState) handleImage(img image.Image, source string) error {
 	if s.analyzeSvc == nil {
-		return fmt.Errorf("数据尚未加载，请先点击“刷新网站数据”")
+		return fmt.Errorf("数据尚未加载，请先点击“刷新数据”")
 	}
 
 	results, rawLines, err := s.analyzeSvc.AnalyzeImage(context.Background(), img)
@@ -222,18 +426,18 @@ func (s *uiState) handleImage(img image.Image, source string) error {
 	}
 
 	s.currentImage = img
+	s.results = results
 	capturePath, _ := config.LastCapturePath()
 	if capturePath != "" {
 		_ = capture.SavePNG(capturePath, img)
 	}
 
-	s.updatePreview(img)
-	s.renderResults(results)
-	s.log(fmt.Sprintf("%s 完成，识别到 %d 组尺寸/重量", source, len(results)))
+	s.renderResultCards(results)
+	s.setStatus(fmt.Sprintf("%s完成，识别到 %d 组", source, len(results)))
 	return nil
 }
 
-func (s *uiState) renderResults(results []analyzer.Result) {
+func (s *uiState) renderResultCards(results []analyzer.Result) {
 	objects := make([]fyne.CanvasObject, 0, len(results))
 	for idx, result := range results {
 		details := make([]fyne.CanvasObject, 0, len(result.Candidates)+1)
@@ -254,31 +458,36 @@ func (s *uiState) renderResults(results []analyzer.Result) {
 			details = append(details, s.buildCandidateRow(candidate.PetID, line))
 		}
 
-		objects = append(objects, widget.NewCard(
-			fmt.Sprintf("蛋 %d", idx+1),
-			"",
-			container.NewVBox(details...),
+		objects = append(objects, buildSurfaceCard(
+			container.NewVBox(
+				widget.NewLabelWithStyle(fmt.Sprintf("蛋 %d", idx+1), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+				container.NewVBox(details...),
+			),
+			color.NRGBA{R: 0xFB, G: 0xF8, B: 0xF1, A: 0xD8},
+			color.NRGBA{R: 0xE0, G: 0xD1, B: 0xB6, A: 0xD0},
+			20,
 		))
 	}
 	if len(objects) == 0 {
-		objects = append(objects, s.buildEmptyResults())
+		objects = append(objects, s.buildEmptyResultCard())
 	}
-	s.resultsBox.Objects = objects
-	s.resultsBox.Refresh()
+	s.resultList.Objects = objects
+	s.resultList.Refresh()
 }
 
-func (s *uiState) warmAtlasIndex() {
-	if s.atlas == nil {
-		return
-	}
+func (s *uiState) buildEmptyResultCard() fyne.CanvasObject {
+	label := widget.NewLabel("暂无分析结果。\n先截图或导入图片，结果会按蛋分组显示。")
+	label.Wrapping = fyne.TextWrapWord
+	return buildSurfaceCard(label, color.NRGBA{R: 0xFB, G: 0xF8, B: 0xF1, A: 0xD8}, color.NRGBA{R: 0xE0, G: 0xD1, B: 0xB6, A: 0xD0}, 20)
+}
 
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		if err := s.atlas.WarmIndex(ctx); err != nil {
-			s.log(fmt.Sprintf("预热精灵索引失败: %v", err))
-		}
-	}()
+func (s *uiState) buildCandidateRow(petID string, content fyne.CanvasObject) fyne.CanvasObject {
+	sprite := canvas.NewImageFromImage(buildPetPlaceholderImage())
+	sprite.FillMode = canvas.ImageFillContain
+	sprite.SetMinSize(fyne.NewSize(72, 72))
+	s.loadCandidateImage(petID, sprite)
+
+	return container.NewBorder(nil, nil, container.NewPadded(sprite), nil, content)
 }
 
 func (s *uiState) loadCandidateImage(petID string, target *canvas.Image) {
@@ -293,7 +502,7 @@ func (s *uiState) loadCandidateImage(petID string, target *canvas.Image) {
 		img, err := s.atlas.Load(ctx, petID)
 		if err != nil {
 			if !errors.Is(err, os.ErrNotExist) {
-				s.log(fmt.Sprintf("加载精灵图片失败(%s): %v", petID, err))
+				fmt.Printf("load pet image %s failed: %v\n", petID, err)
 			}
 			return
 		}
@@ -303,21 +512,6 @@ func (s *uiState) loadCandidateImage(petID string, target *canvas.Image) {
 	}()
 }
 
-func (s *uiState) buildCandidateRow(petID string, content fyne.CanvasObject) fyne.CanvasObject {
-	sprite := canvas.NewImageFromImage(buildPetPlaceholderImage())
-	sprite.FillMode = canvas.ImageFillContain
-	sprite.SetMinSize(fyne.NewSize(72, 72))
-	s.loadCandidateImage(petID, sprite)
-
-	return container.NewBorder(
-		nil,
-		nil,
-		container.NewPadded(sprite),
-		nil,
-		content,
-	)
-}
-
 func buildMetricRow(name, value string) fyne.CanvasObject {
 	label := widget.NewLabel(name)
 	label.Importance = widget.MediumImportance
@@ -325,244 +519,122 @@ func buildMetricRow(name, value string) fyne.CanvasObject {
 	return container.NewPadded(container.NewBorder(nil, nil, label, nil, number))
 }
 
-func (s *uiState) updatePreview(img image.Image) {
-	s.previewView.Image = img
-	s.previewView.Refresh()
-}
-
-func (s *uiState) openImageDialog() {
-	fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-		if err != nil {
-			s.log(fmt.Sprintf("打开图片对话框失败: %v", err))
-			dialog.ShowError(err, s.window)
-			return
-		}
-		if reader == nil {
-			return
-		}
-		defer reader.Close()
-
-		img, _, decodeErr := image.Decode(reader)
-		if decodeErr != nil {
-			s.log(fmt.Sprintf("解析图片失败: %v", decodeErr))
-			dialog.ShowError(decodeErr, s.window)
-			return
-		}
-
-		path := reader.URI().Path()
-		if dir := filepath.Dir(path); dir != "" && dir != "." {
-			cfg := s.config.Get()
-			cfg.LastImageDir = dir
-			if saveErr := s.config.Save(cfg); saveErr != nil {
-				s.log(fmt.Sprintf("保存图片目录失败: %v", saveErr))
-			}
-		}
-		s.setStatus("图片分析处理中")
-		if analyzeErr := s.handleImage(img, path); analyzeErr != nil {
-			s.setStatus("图片分析失败")
-			s.log(fmt.Sprintf("图片分析失败: %v", analyzeErr))
-			dialog.ShowError(analyzeErr, s.window)
-			return
-		}
-		s.setStatus("图片分析完成")
-	}, s.window)
-	fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".png", ".jpg", ".jpeg"}))
-	if lastDir := strings.TrimSpace(s.config.Get().LastImageDir); lastDir != "" {
-		if uri := storage.NewFileURI(lastDir); uri != nil {
-			if lister, err := storage.ListerForURI(uri); err == nil {
-				fileDialog.SetLocation(lister)
-			} else {
-				s.log(fmt.Sprintf("恢复图片目录失败: %v", err))
-			}
-		}
-	}
-	fileDialog.Show()
-}
-
-func (s *uiState) saveCurrentCapture() {
-	if s.currentImage == nil {
-		s.log("当前没有可保存的截图")
+func (s *uiState) warmAtlasIndex() {
+	if s.atlas == nil {
 		return
 	}
-
-	fileDialog := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
-		if err != nil {
-			s.log(fmt.Sprintf("保存对话框失败: %v", err))
-			return
-		}
-		if writer == nil {
-			return
-		}
-		defer writer.Close()
-
-		if encodeErr := png.Encode(writer, s.currentImage); encodeErr != nil {
-			s.log(fmt.Sprintf("保存截图失败: %v", encodeErr))
-			return
-		}
-		s.log(fmt.Sprintf("截图已保存到 %s", writer.URI().Path()))
-	}, s.window)
-	fileDialog.SetFileName("egg-capture.png")
-	fileDialog.Show()
-}
-
-func (s *uiState) beginCaptureSelection() {
-	if s.captureInFlight {
-		s.log("截图流程正在进行中")
-		return
-	}
-	if s.analyzeSvc == nil {
-		err := fmt.Errorf("数据尚未加载，请先点击“刷新网站数据”")
-		s.setStatus("截图分析失败")
-		s.log(err.Error())
-		dialog.ShowError(err, s.window)
-		return
-	}
-
-	s.window.Hide()
-
-	s.captureInFlight = true
-	s.setStatus("等待 Flameshot 框选")
 	go func() {
-		time.Sleep(140 * time.Millisecond)
-
-		img, err := capture.CaptureWithFlameshot(context.Background())
-		s.captureInFlight = false
-		switch {
-		case err == nil:
-			s.showWindow()
-			s.run("截图分析", func() error {
-				return s.handleImage(img, "Flameshot 截图")
-			})
-		case errors.Is(err, capture.ErrCancelled):
-			s.setStatus("准备就绪")
-			s.log("已取消截图")
-			s.showWindow()
-		default:
-			s.showWindow()
-			s.setStatus("截图分析失败")
-			s.log(fmt.Sprintf("Flameshot 截图失败: %v", err))
-			dialog.ShowError(err, s.window)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := s.atlas.WarmIndex(ctx); err != nil {
+			fmt.Printf("warm atlas index failed: %v\n", err)
 		}
 	}()
 }
 
-func (s *uiState) saveHotkey(hotkeyText string) {
-	newCfg := s.config.Get()
-	newCfg.Hotkey = strings.TrimSpace(hotkeyText)
-	if err := s.config.Save(newCfg); err != nil {
-		s.log(fmt.Sprintf("保存快捷键失败: %v", err))
-		dialog.ShowError(err, s.window)
-		return
-	}
-	if err := s.registerHotkey(newCfg.Hotkey); err != nil {
-		s.log(fmt.Sprintf("重新注册快捷键失败: %v", err))
-		dialog.ShowError(err, s.window)
-		return
-	}
-	s.log("快捷键已更新")
-}
-
-func (s *uiState) registerHotkey(hotkeyText string) error {
-	return s.hotkeys.Register(hotkeyText, func() {
-		go s.beginCaptureSelection()
-	})
-}
-
 func (s *uiState) run(name string, fn func() error) {
-	s.setStatus(name + "处理中")
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				s.setStatus(name + "失败")
-				s.log(fmt.Sprintf("%s失败: %v", name, r))
-			}
-		}()
-
-		err := fn()
-		if err != nil {
+		if err := fn(); err != nil {
 			s.setStatus(name + "失败")
-			s.log(fmt.Sprintf("%s失败: %v", name, err))
+			s.showError(err)
 			return
 		}
 		s.setStatus(name + "完成")
 	}()
 }
 
-func (s *uiState) log(message string) {
-	current := strings.TrimSpace(s.logLabel.Text)
-	timestamped := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), message)
-	if current == "" {
-		s.logLabel.SetText(timestamped)
+func (s *uiState) setStatus(message string) {
+	s.panelStatus.SetText(message)
+}
+
+func (s *uiState) showError(err error) {
+	fmt.Printf("error: %v\n", err)
+	dialog.ShowError(err, s.dialogParent())
+}
+
+func (s *uiState) dialogParent() fyne.Window {
+	if s.panelVisible {
+		return s.panelWindow
+	}
+	if s.resultVisible {
+		return s.resultWindow
+	}
+	return s.bubbleWindow
+}
+
+func (s *uiState) togglePanelWindow() {
+	if s.panelVisible {
+		s.hidePanelWindow()
 		return
 	}
-	s.logLabel.SetText(current + "\n" + timestamped)
+	s.showPanelWindow()
 }
 
-func (s *uiState) setStatus(message string) {
-	s.statusLabel.SetText(message)
-}
-
-func (s *uiState) showWindow() {
-	s.window.Show()
-	s.window.RequestFocus()
-}
-
-func (s *uiState) openSettingsDialog() {
-	cfg := s.config.Get()
-	currentHotkey := widget.NewLabel(hotkey.NormalizeShortcut(cfg.Hotkey))
-	currentHotkey.Importance = widget.HighImportance
-	currentHotkey.Wrapping = fyne.TextWrapWord
-
-	helper := widget.NewLabel("点击“录入快捷键”后，直接按下新的组合键。录入成功会立即保存。")
-	helper.Wrapping = fyne.TextWrapWord
-
-	content := container.NewVBox(
-		widget.NewCard("全局热键", "", container.NewVBox(
-			currentHotkey,
-			helper,
-			widget.NewButton("录入快捷键", func() {
-				s.openHotkeyCaptureWindow(currentHotkey)
-			}),
-		)),
-	)
-
-	dialog.ShowCustom("设置", "关闭", content, s.window)
-}
-
-func (s *uiState) openHotkeyCaptureWindow(currentHotkey *widget.Label) {
-	win := s.app.NewWindow("录入快捷键")
-	win.SetFixedSize(true)
-
-	captureBox := newHotkeyCaptureWidget(s.config.Get().Hotkey, func(value string) {
-		currentHotkey.SetText(hotkey.NormalizeShortcut(value))
-		s.saveHotkey(value)
-		win.Close()
-	}, func() {
-		win.Close()
-	})
-
-	content := container.NewVBox(
-		widget.NewLabel("按下你要使用的快捷键组合。"),
-		widget.NewLabel("录入会自动结束；按 Esc 取消。"),
-		captureBox,
-	)
-	win.SetContent(container.NewPadded(content))
-	win.Resize(fyne.NewSize(420, 220))
-	win.Show()
-	win.RequestFocus()
-	if canvas := win.Canvas(); canvas != nil {
-		canvas.Focus(captureBox)
-		if desktopCanvas, ok := canvas.(desktop.Canvas); ok {
-			desktopCanvas.SetOnKeyDown(captureBox.handleKeyDown)
-			desktopCanvas.SetOnKeyUp(captureBox.handleKeyUp)
-		}
+func (s *uiState) showBubbleWindow() {
+	if !s.bubblePrimed {
+		s.bubblePrimed = true
+		s.bubbleWindow.Show()
+		configureNativeWindow(s.bubbleWindow, nativeWindowStyle{
+			CornerRadius:        37,
+			Floating:            true,
+			Transparent:         true,
+			MovableByBackground: true,
+		})
+		s.bubbleWindow.Hide()
+		go func() {
+			time.Sleep(18 * time.Millisecond)
+			s.showBubbleWindow()
+		}()
+		return
 	}
+	s.bubbleWindow.Show()
+	configureNativeWindow(s.bubbleWindow, nativeWindowStyle{
+		CornerRadius:        37,
+		Floating:            true,
+		Transparent:         true,
+		MovableByBackground: true,
+	})
+	s.bubbleWindow.RequestFocus()
 }
 
-func (s *uiState) buildEmptyResults() fyne.CanvasObject {
-	label := widget.NewLabel("暂无分析结果。\n先截图或导入图片，结果会按蛋分组显示。")
-	label.Wrapping = fyne.TextWrapWord
-	return widget.NewCard("分析结果", "", label)
+func (s *uiState) hideBubbleWindow() {
+	s.bubbleWindow.Hide()
+}
+
+func (s *uiState) showPanelWindow() {
+	s.hideBubbleWindow()
+	s.panelWindow.Show()
+	configureNativeWindow(s.panelWindow, nativeWindowStyle{
+		CornerRadius:        34,
+		Floating:            true,
+		Transparent:         true,
+		MovableByBackground: true,
+	})
+	s.panelWindow.RequestFocus()
+	s.panelVisible = true
+}
+
+func (s *uiState) hidePanelWindow() {
+	s.panelWindow.Hide()
+	s.panelVisible = false
+	s.showBubbleWindow()
+}
+
+func (s *uiState) showResultWindow() {
+	s.resultWindow.Show()
+	configureNativeWindow(s.resultWindow, nativeWindowStyle{
+		CornerRadius:        36,
+		Floating:            true,
+		Transparent:         true,
+		MovableByBackground: true,
+	})
+	s.resultWindow.RequestFocus()
+	s.resultVisible = true
+}
+
+func (s *uiState) hideResultWindow() {
+	s.resultWindow.Hide()
+	s.resultVisible = false
 }
 
 func (s *uiState) quit() {
@@ -570,40 +642,16 @@ func (s *uiState) quit() {
 		return
 	}
 	s.quitting = true
-	s.window.SetCloseIntercept(nil)
-	go func() {
-		done := make(chan struct{})
-		go func() {
-			s.cleanup()
-			close(done)
-		}()
-
-		select {
-		case <-done:
-		case <-time.After(2 * time.Second):
-		}
-		os.Exit(0)
-	}()
-	s.window.Close()
+	s.cleanup()
+	s.app.Quit()
 }
 
 func (s *uiState) cleanup() {
 	s.cleanupOnce.Do(func() {
-		s.hotkeys.Close()
 		if closer, ok := s.ocr.(interface{ Close() error }); ok {
 			_ = closer.Close()
 		}
 	})
-}
-
-func buildPlaceholderImage() image.Image {
-	img := image.NewRGBA(image.Rect(0, 0, 520, 320))
-	for y := 0; y < 320; y++ {
-		for x := 0; x < 520; x++ {
-			img.Set(x, y, color.RGBA{R: 244, G: 246, B: 248, A: 255})
-		}
-	}
-	return img
 }
 
 func buildPetPlaceholderImage() image.Image {
@@ -627,29 +675,29 @@ func newContrastTheme() fyne.Theme {
 func (t *contrastTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
 	switch name {
 	case theme.ColorNameBackground:
-		return color.NRGBA{R: 0xF4, G: 0xF1, B: 0xE8, A: 0xFF}
+		return color.NRGBA{R: 0xF5, G: 0xF7, B: 0xFB, A: 0xFF}
 	case theme.ColorNameInputBackground:
-		return color.NRGBA{R: 0xFF, G: 0xFD, B: 0xF8, A: 0xFF}
+		return color.NRGBA{R: 0xFB, G: 0xFC, B: 0xFE, A: 0xFF}
 	case theme.ColorNameInputBorder:
-		return color.NRGBA{R: 0xC3, G: 0xB7, B: 0x9C, A: 0xFF}
+		return color.NRGBA{R: 0xD9, G: 0xE0, B: 0xEA, A: 0xFF}
 	case theme.ColorNameButton:
-		return color.NRGBA{R: 0xD8, G: 0xC2, B: 0x8C, A: 0xFF}
+		return color.NRGBA{R: 0xF7, G: 0xF9, B: 0xFD, A: 0xFF}
 	case theme.ColorNameForeground:
-		return color.NRGBA{R: 0x15, G: 0x18, B: 0x1C, A: 0xFF}
+		return color.NRGBA{R: 0x17, G: 0x1D, B: 0x29, A: 0xFF}
 	case theme.ColorNameDisabled:
-		return color.NRGBA{R: 0x4C, G: 0x53, B: 0x5D, A: 0xFF}
+		return color.NRGBA{R: 0x7E, G: 0x89, B: 0x99, A: 0xFF}
 	case theme.ColorNamePlaceHolder:
-		return color.NRGBA{R: 0x56, G: 0x5F, B: 0x6B, A: 0xFF}
+		return color.NRGBA{R: 0x6F, G: 0x7B, B: 0x8C, A: 0xFF}
 	case theme.ColorNameScrollBar:
-		return color.NRGBA{R: 0x88, G: 0x7A, B: 0x63, A: 0xCC}
+		return color.NRGBA{R: 0xC2, G: 0xCB, B: 0xD8, A: 0xCC}
 	case theme.ColorNamePrimary:
-		return color.NRGBA{R: 0xA8, G: 0x59, B: 0x27, A: 0xFF}
+		return color.NRGBA{R: 0x53, G: 0x86, B: 0xFF, A: 0xFF}
 	case theme.ColorNameHover:
-		return color.NRGBA{R: 0xA8, G: 0x59, B: 0x27, A: 0x22}
+		return color.NRGBA{R: 0x53, G: 0x86, B: 0xFF, A: 0x18}
 	case theme.ColorNameFocus:
-		return color.NRGBA{R: 0xA8, G: 0x59, B: 0x27, A: 0x44}
+		return color.NRGBA{R: 0x53, G: 0x86, B: 0xFF, A: 0x2E}
 	case theme.ColorNameSeparator:
-		return color.NRGBA{R: 0xD5, G: 0xCC, B: 0xB7, A: 0xFF}
+		return color.NRGBA{R: 0xDB, G: 0xE3, B: 0xEE, A: 0xFF}
 	}
 	return t.base.Color(name, variant)
 }

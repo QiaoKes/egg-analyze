@@ -4,11 +4,11 @@
 
 Build a cross-platform desktop tool in Go that:
 
-- captures a screenshot through a configurable global hotkey
+- captures a screenshot through a floating launcher window
 - extracts egg size and weight with OCR
 - uses the live rocom site data source
 - computes egg candidate probabilities locally
-- provides a GUI and minimizes to the Windows tray
+- provides a GUI plus floating launcher/result windows
 
 ## Implementation Plan
 
@@ -17,7 +17,7 @@ Build a cross-platform desktop tool in Go that:
 3. Port the site matching algorithm into Go
 4. Integrate RapidOCR
 5. Build screenshot analysis flow for flameshot region captures and local image imports
-6. Add Fyne GUI, tray actions, and configurable hotkey
+6. Add Fyne GUI and floating launcher/result workflow
 7. Validate against the `picture` samples and document remaining gaps
 
 ## Confirmed Facts
@@ -33,7 +33,7 @@ Build a cross-platform desktop tool in Go that:
 1. Site “API” is actually public JSON plus front-end scoring logic, so the desktop app must replicate the scoring algorithm locally.
 2. OCR still has visible noise on low-resolution numbers, so extraction depends on numeric normalization and pairing instead of fixed text anchors.
 3. The application now depends on an external screenshot tool (`flameshot`) being installed on the host.
-4. Application-level global hotkey registration is still only implemented on Windows.
+4. Fyne public API does not expose a true always-on-top or freely draggable floating ball, so the app currently uses borderless utility windows.
 5. Release packaging now aims to bundle both `flameshot` and a Python runtime for RapidOCR, which increases artifact size.
 
 ## Work Log
