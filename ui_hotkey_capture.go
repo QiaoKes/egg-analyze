@@ -53,6 +53,18 @@ func (w *hotkeyCaptureWidget) FocusLost() {
 func (w *hotkeyCaptureWidget) TypedRune(rune) {}
 
 func (w *hotkeyCaptureWidget) TypedKey(event *fyne.KeyEvent) {
+	w.handleTypedKey(event)
+}
+
+func (w *hotkeyCaptureWidget) KeyDown(event *fyne.KeyEvent) {
+	w.handleKeyDown(event)
+}
+
+func (w *hotkeyCaptureWidget) KeyUp(event *fyne.KeyEvent) {
+	w.handleKeyUp(event)
+}
+
+func (w *hotkeyCaptureWidget) handleTypedKey(event *fyne.KeyEvent) {
 	if w.pressed != 0 {
 		return
 	}
@@ -67,7 +79,7 @@ func (w *hotkeyCaptureWidget) TypedKey(event *fyne.KeyEvent) {
 	}
 }
 
-func (w *hotkeyCaptureWidget) KeyDown(event *fyne.KeyEvent) {
+func (w *hotkeyCaptureWidget) handleKeyDown(event *fyne.KeyEvent) {
 	if modifier, ok := hotkey.ModifierFromKey(event.Name); ok {
 		w.pressed |= modifier
 		w.Refresh()
@@ -75,6 +87,19 @@ func (w *hotkeyCaptureWidget) KeyDown(event *fyne.KeyEvent) {
 	}
 	if hotkey.IsModifierKey(event.Name) {
 		return
+	}
+	if w.pressed == 0 {
+		switch event.Name {
+		case fyne.KeyEscape:
+			if w.onCancel != nil {
+				w.onCancel()
+			}
+			return
+		case fyne.KeyBackspace, fyne.KeyDelete:
+			w.current = ""
+			w.Refresh()
+			return
+		}
 	}
 
 	value, err := hotkey.FormatShortcut(w.pressed, event.Name)
@@ -88,7 +113,7 @@ func (w *hotkeyCaptureWidget) KeyDown(event *fyne.KeyEvent) {
 	}
 }
 
-func (w *hotkeyCaptureWidget) KeyUp(event *fyne.KeyEvent) {
+func (w *hotkeyCaptureWidget) handleKeyUp(event *fyne.KeyEvent) {
 	if modifier, ok := hotkey.ModifierFromKey(event.Name); ok {
 		w.pressed &^= modifier
 		w.Refresh()

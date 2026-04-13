@@ -30,6 +30,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -463,7 +464,7 @@ func (s *uiState) saveHotkey(hotkeyText string) {
 
 func (s *uiState) registerHotkey(hotkeyText string) error {
 	return s.hotkeys.Register(hotkeyText, func() {
-		s.beginCaptureSelection()
+		go s.beginCaptureSelection()
 	})
 }
 
@@ -551,6 +552,10 @@ func (s *uiState) openHotkeyCaptureWindow(currentHotkey *widget.Label) {
 	win.RequestFocus()
 	if canvas := win.Canvas(); canvas != nil {
 		canvas.Focus(captureBox)
+		if desktopCanvas, ok := canvas.(desktop.Canvas); ok {
+			desktopCanvas.SetOnKeyDown(captureBox.handleKeyDown)
+			desktopCanvas.SetOnKeyUp(captureBox.handleKeyUp)
+		}
 	}
 }
 
