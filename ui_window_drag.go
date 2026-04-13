@@ -2,6 +2,7 @@ package main
 
 import (
 	"image/color"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -10,10 +11,10 @@ import (
 
 type windowDragLabel struct {
 	widget.BaseWidget
-	label   string
-	window  fyne.Window
-	align   fyne.TextAlign
-	started bool
+	label      string
+	window     fyne.Window
+	align      fyne.TextAlign
+	nextDragAt time.Time
 }
 
 func newWindowDragLabel(label string, win fyne.Window, align fyne.TextAlign) *windowDragLabel {
@@ -34,15 +35,13 @@ func (w *windowDragLabel) Dragged(event *fyne.DragEvent) {
 	if w.window == nil {
 		return
 	}
-	if !w.started {
-		w.started = true
+	if time.Now().After(w.nextDragAt) {
+		w.nextDragAt = time.Now().Add(220 * time.Millisecond)
 		beginNativeWindowDrag(w.window)
 	}
 }
 
-func (w *windowDragLabel) DragEnd() {
-	w.started = false
-}
+func (w *windowDragLabel) DragEnd() {}
 
 func (w *windowDragLabel) CreateRenderer() fyne.WidgetRenderer {
 	text := canvas.NewText(w.label, color.NRGBA{R: 0x18, G: 0x1F, B: 0x2D, A: 0xFF})

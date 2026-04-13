@@ -17,8 +17,8 @@ type bubbleWidget struct {
 	onDragStart      func()
 	onDragEnd        func()
 	dragged          bool
-	dragStarted      bool
 	suppressTapUntil time.Time
+	nextDragAt       time.Time
 }
 
 func newBubbleWidget(onTap func(), onDragStart func(), onDragEnd func()) *bubbleWidget {
@@ -45,8 +45,8 @@ func (w *bubbleWidget) TappedSecondary(*fyne.PointEvent) {}
 func (w *bubbleWidget) Dragged(event *fyne.DragEvent) {
 	if math.Abs(float64(event.Dragged.DX)) >= 2 || math.Abs(float64(event.Dragged.DY)) >= 2 {
 		w.dragged = true
-		if !w.dragStarted && w.onDragStart != nil {
-			w.dragStarted = true
+		if time.Now().After(w.nextDragAt) && w.onDragStart != nil {
+			w.nextDragAt = time.Now().Add(220 * time.Millisecond)
 			w.onDragStart()
 		}
 	}
@@ -54,18 +54,17 @@ func (w *bubbleWidget) Dragged(event *fyne.DragEvent) {
 
 func (w *bubbleWidget) DragEnd() {
 	if w.dragged {
-		w.suppressTapUntil = time.Now().Add(160 * time.Millisecond)
+		w.suppressTapUntil = time.Now().Add(120 * time.Millisecond)
 		if w.onDragEnd != nil {
 			w.onDragEnd()
 		}
 	}
 	w.dragged = false
-	w.dragStarted = false
 }
 
 func (w *bubbleWidget) CreateRenderer() fyne.WidgetRenderer {
 	shadow := canvas.NewCircle(color.NRGBA{R: 0x18, G: 0x1B, B: 0x22, A: 0x12})
-	halo := canvas.NewCircle(color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x26})
+	halo := canvas.NewCircle(color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x16})
 	face := canvas.NewCircle(color.NRGBA{R: 0xF9, G: 0xFB, B: 0xFF, A: 0xD8})
 	face.StrokeColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x90}
 	face.StrokeWidth = 1
@@ -101,24 +100,24 @@ type bubbleRenderer struct {
 }
 
 func (r *bubbleRenderer) Layout(size fyne.Size) {
-	r.shadow.Move(fyne.NewPos(8, 10))
-	r.shadow.Resize(fyne.NewSize(size.Width-16, size.Height-14))
+	r.shadow.Move(fyne.NewPos(7, 8))
+	r.shadow.Resize(fyne.NewSize(size.Width-14, size.Height-13))
 
-	r.halo.Move(fyne.NewPos(5, 5))
-	r.halo.Resize(fyne.NewSize(size.Width-10, size.Height-10))
+	r.halo.Move(fyne.NewPos(4, 4))
+	r.halo.Resize(fyne.NewSize(size.Width-8, size.Height-8))
 
-	r.face.Move(fyne.NewPos(7, 7))
-	r.face.Resize(fyne.NewSize(size.Width-14, size.Height-14))
+	r.face.Move(fyne.NewPos(5, 5))
+	r.face.Resize(fyne.NewSize(size.Width-10, size.Height-10))
 
-	r.inner.Move(fyne.NewPos(size.Width*0.24, size.Height*0.2))
-	r.inner.Resize(fyne.NewSize(size.Width*0.22, size.Height*0.16))
+	r.inner.Move(fyne.NewPos(size.Width*0.23, size.Height*0.19))
+	r.inner.Resize(fyne.NewSize(size.Width*0.2, size.Height*0.14))
 
-	iconSize := fyne.NewSize(size.Width*0.3, size.Height*0.3)
+	iconSize := fyne.NewSize(size.Width*0.28, size.Height*0.28)
 	r.icon.Move(fyne.NewPos((size.Width-iconSize.Width)/2, (size.Height-iconSize.Height)/2))
 	r.icon.Resize(iconSize)
 
 	indicatorSize := fyne.NewSize(10, 10)
-	r.indicator.Move(fyne.NewPos(size.Width-24, 15))
+	r.indicator.Move(fyne.NewPos(size.Width-22, 14))
 	r.indicator.Resize(indicatorSize)
 }
 
