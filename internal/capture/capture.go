@@ -2,6 +2,7 @@ package capture
 
 import (
 	"context"
+	"egg-analyze/internal/config"
 	"errors"
 	"fmt"
 	"image"
@@ -169,7 +170,17 @@ func collectSearchRoots(executable string) []string {
 }
 
 func newTempCapturePath() (string, func(), error) {
-	dir, err := os.MkdirTemp("", "egg-analyze-flameshot-*")
+	root, err := config.RuntimeDir()
+	if err != nil {
+		return "", nil, err
+	}
+
+	captureRoot := filepath.Join(root, "capture")
+	if err := os.MkdirAll(captureRoot, 0o755); err != nil {
+		return "", nil, fmt.Errorf("create capture runtime dir: %w", err)
+	}
+
+	dir, err := os.MkdirTemp(captureRoot, "egg-analyze-flameshot-*")
 	if err != nil {
 		return "", nil, fmt.Errorf("create temp capture dir: %w", err)
 	}

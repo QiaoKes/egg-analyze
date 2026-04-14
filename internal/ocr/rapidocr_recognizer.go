@@ -3,6 +3,7 @@ package ocr
 import (
 	"bufio"
 	"context"
+	"egg-analyze/internal/config"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -36,7 +37,17 @@ func newRapidOCRRecognizer() (Recognizer, error) {
 	if err != nil {
 		return nil, err
 	}
-	tempDir, err := os.MkdirTemp("", "egg-analyze-rapidocr-worker-*")
+
+	root, err := config.RuntimeDir()
+	if err != nil {
+		return nil, err
+	}
+	ocrRoot := filepath.Join(root, "ocr")
+	if err := os.MkdirAll(ocrRoot, 0o755); err != nil {
+		return nil, err
+	}
+
+	tempDir, err := os.MkdirTemp(ocrRoot, "egg-analyze-rapidocr-worker-*")
 	if err != nil {
 		return nil, err
 	}

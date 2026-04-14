@@ -15,6 +15,7 @@ const (
 	configFileName      = "config.json"
 	datasetCacheName    = "egg-measurements-final.json"
 	lastCaptureFileName = "last-capture.png"
+	runtimeDirName      = "runtime"
 )
 
 type Config struct {
@@ -123,11 +124,37 @@ func DatasetCachePath() (string, error) {
 }
 
 func LastCapturePath() (string, error) {
-	dir, err := AppDir()
+	dir, err := RuntimeDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(dir, lastCaptureFileName), nil
+}
+
+func RuntimeDir() (string, error) {
+	if executable, err := os.Executable(); err == nil && executable != "" {
+		dir := filepath.Join(filepath.Dir(executable), runtimeDirName)
+		if err := os.MkdirAll(dir, 0o755); err == nil {
+			return dir, nil
+		}
+	}
+
+	if cwd, err := os.Getwd(); err == nil && cwd != "" {
+		dir := filepath.Join(cwd, runtimeDirName)
+		if err := os.MkdirAll(dir, 0o755); err == nil {
+			return dir, nil
+		}
+	}
+
+	dir, err := AppDir()
+	if err != nil {
+		return "", err
+	}
+	dir = filepath.Join(dir, runtimeDirName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return dir, nil
 }
 
 func normalize(cfg Config) Config {
