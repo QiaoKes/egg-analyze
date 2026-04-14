@@ -185,6 +185,52 @@ func TestRescueMeasurementsUsesRecOnlyForBrokenWeightLine(t *testing.T) {
 	assertMeasurement(t, rescued[0], 0.21, 0.309)
 }
 
+func TestRescueMeasurementsFallsBackToBlindCropBelowAnchor(t *testing.T) {
+	lines := []ocr.Line{
+		{Text: "0.42<×", X: 120, Y: 120, Width: 100, Height: 24},
+		{Text: "12.969", X: 120, Y: 170, Width: 110, Height: 24},
+		{Text: "D.2z<×", X: 120, Y: 320, Width: 100, Height: 24},
+	}
+	base := ExtractMeasurementsWithPriors(lines, rocom.MeasurementPriors{
+		Diameter: rocom.Range{Min: 0.04, Max: 1.1},
+		Weight:   rocom.Range{Min: 0.03, Max: 280},
+	})
+	if len(base) != 1 {
+		t.Fatalf("expected 1 base measurement, got %d", len(base))
+	}
+
+	rescued := rescueMeasurements(context.Background(), stubTextRecognizer{
+		lines: []ocr.Line{{Text: ".744A"}},
+	}, image.NewRGBA(image.Rect(0, 0, 400, 500)), lines, base, rocom.MeasurementPriors{
+		Diameter: rocom.Range{Min: 0.04, Max: 1.1},
+		Weight:   rocom.Range{Min: 0.03, Max: 280},
+	})
+	if len(rescued) != 1 {
+		t.Fatalf("expected 1 rescued measurement, got %d", len(rescued))
+	}
+	assertMeasurement(t, rescued[0], 0.22, 0.744)
+}
+
+func TestRescueMeasurementsPrefersMorePreciseBlindCropResult(t *testing.T) {
+	lines := []ocr.Line{
+		{Text: "D.2z<×", X: 120, Y: 320, Width: 100, Height: 24},
+	}
+
+	rescued := rescueMeasurements(context.Background(), &sequencedTextRecognizer{
+		batches: [][]ocr.Line{
+			{{Text: "0.74"}},
+			{{Text: "0.744A"}},
+		},
+	}, image.NewRGBA(image.Rect(0, 0, 400, 500)), lines, nil, rocom.MeasurementPriors{
+		Diameter: rocom.Range{Min: 0.04, Max: 1.1},
+		Weight:   rocom.Range{Min: 0.03, Max: 280},
+	})
+	if len(rescued) != 1 {
+		t.Fatalf("expected 1 rescued measurement, got %d", len(rescued))
+	}
+	assertMeasurement(t, rescued[0], 0.22, 0.744)
+}
+
 type stubTextRecognizer struct {
 	lines []ocr.Line
 }
@@ -197,6 +243,26 @@ func (s stubTextRecognizer) Recognize(context.Context, image.Image) ([]ocr.Line,
 
 func (s stubTextRecognizer) RecognizeText(context.Context, image.Image) ([]ocr.Line, error) {
 	return s.lines, nil
+}
+
+type sequencedTextRecognizer struct {
+	batches [][]ocr.Line
+	index   int
+}
+
+func (s *sequencedTextRecognizer) Name() string { return "sequence" }
+
+func (s *sequencedTextRecognizer) Recognize(context.Context, image.Image) ([]ocr.Line, error) {
+	return nil, nil
+}
+
+func (s *sequencedTextRecognizer) RecognizeText(context.Context, image.Image) ([]ocr.Line, error) {
+	if s.index >= len(s.batches) {
+		return nil, nil
+	}
+	lines := s.batches[s.index]
+	s.index++
+	return lines, nil
 }
 
 func assertMeasurement(t *testing.T, got Measurement, wantSize, wantWeight float64) {

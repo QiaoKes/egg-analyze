@@ -239,21 +239,7 @@ func rescueMeasurements(ctx context.Context, recognizer ocr.TextRecognizer, img 
 			continue
 		}
 
-		target, ok := findRescueTarget(line, sortedLines)
-		if !ok {
-			continue
-		}
-
-		crop, ok := cropLineWithPadding(img, target, 18, 12)
-		if !ok {
-			continue
-		}
-
-		textLines, err := recognizer.RecognizeText(ctx, crop)
-		if err != nil {
-			continue
-		}
-		weight, ok := parseRescuedWeight(textLines, priors.Weight)
+		weight, ok := rescueWeightBelowAnchor(ctx, recognizer, img, line, sortedLines, priors.Weight)
 		if !ok {
 			continue
 		}
@@ -273,7 +259,62 @@ func rescueMeasurements(ctx context.Context, recognizer ocr.TextRecognizer, img 
 	return rescued
 }
 
-func parseRescuedWeight(lines []ocr.Line, weightRange rocom.Range) (float64, bool) {
+func rescueWeightBelowAnchor(ctx context.Context, recognizer ocr.TextRecognizer, img image.Image, anchor ocr.Line, lines []ocr.Line, weightRange rocom.Range) (float64, bool) {
+	bestScore := math.Inf(-1)
+	bestValue := 0.0
+	for _, crop := range buildRescueCrops(img, anchor, lines) {
+		for _, prepared := range prepareRescueImages(crop) {
+			textLines, err := recognizer.RecognizeText(ctx, prepared)
+			if err != nil {
+				continue
+			}
+			value, score, ok := parseBestRescuedWeight(textLines, weightRange)
+			if ok && score > bestScore {
+				bestScore = score
+				bestValue = value
+			}
+		}
+	}
+	return bestValue, !math.IsInf(bestScore, -1)
+}
+
+func buildRescueCrops(img image.Image, anchor ocr.Line, lines []ocr.Line) []image.Image {
+	crops := make([]image.Image, 0, 3)
+	if target, ok := findRescueTarget(anchor, lines); ok {
+		if crop, ok := cropLineWithPadding(img, target, 18, 12); ok {
+			crops = append(crops, crop)
+		}
+	}
+	if crop, ok := cropWeightBelowAnchor(img, anchor, 0.10, 1.20, 1.30, 1.55); ok {
+		crops = append(crops, crop)
+	}
+	if crop, ok := cropWeightBelowAnchor(img, anchor, 0.00, 1.12, 1.18, 1.70); ok {
+		crops = append(crops, crop)
+	}
+	return crops
+}
+
+func cropWeightBelowAnchor(src image.Image, anchor ocr.Line, leftPadRatio, topOffsetRatio, widthRatio, heightRatio float64) (image.Image, bool) {
+	left := anchor.X - int(math.Round(float64(anchor.Width)*leftPadRatio))
+	top := anchor.Y + int(math.Round(float64(anchor.Height)*topOffsetRatio))
+	right := anchor.X + int(math.Round(float64(anchor.Width)*widthRatio))
+	bottom := top + int(math.Round(float64(anchor.Height)*heightRatio))
+	return cropRect(src, image.Rect(left, top, right, bottom))
+}
+
+func prepareRescueImages(src image.Image) []image.Image {
+	images := []image.Image{src}
+	height := src.Bounds().Dy()
+	switch {
+	case height > 0 && height < 28:
+		images = append(images, scale(src, 3))
+	case height >= 28 && height < 64:
+		images = append(images, scale(src, 2))
+	}
+	return images
+}
+
+func parseBestRescuedWeight(lines []ocr.Line, weightRange rocom.Range) (float64, float64, bool) {
 	bestScore := -1.0
 	bestValue := 0.0
 	expanded := expandRange(weightRange, 0.25, 0.03)
@@ -285,13 +326,37 @@ func parseRescuedWeight(lines []ocr.Line, weightRange rocom.Range) (float64, boo
 		if !inNumericRange(value, expanded) {
 			continue
 		}
-		score := plausibilityScore(value, weightRange, 0.12)
+		score := plausibilityScore(value, weightRange, 0.12) + rescuedPrecisionScore(normalized)
 		if score > bestScore {
 			bestScore = score
 			bestValue = value
 		}
 	}
-	return bestValue, bestScore > 0
+	return bestValue, bestScore, bestScore > 0
+}
+
+func rescuedPrecisionScore(normalized string) float64 {
+	decimalDigits := digitsAfterDecimal(normalized)
+	score := float64(minInt(decimalDigits, 3)) * 3
+	if decimalDigits >= 3 {
+		score += 1
+	}
+	return score
+}
+
+func digitsAfterDecimal(value string) int {
+	index := strings.IndexByte(value, '.')
+	if index == -1 || index == len(value)-1 {
+		return 0
+	}
+	count := 0
+	for _, r := range value[index+1:] {
+		if r < '0' || r > '9' {
+			break
+		}
+		count++
+	}
+	return count
 }
 
 func findRescueTarget(anchor ocr.Line, lines []ocr.Line) (ocr.Line, bool) {
@@ -326,11 +391,20 @@ func findRescueTarget(anchor ocr.Line, lines []ocr.Line) (ocr.Line, bool) {
 }
 
 func cropLineWithPadding(src image.Image, line ocr.Line, padX, padY int) (image.Image, bool) {
+	return cropRect(src, image.Rect(
+		line.X-padX,
+		line.Y-padY,
+		line.X+maxInt(line.Width, 1)+padX,
+		line.Y+maxInt(line.Height, 1)+padY,
+	))
+}
+
+func cropRect(src image.Image, rect image.Rectangle) (image.Image, bool) {
 	bounds := src.Bounds()
-	left := clampInt(line.X-padX, bounds.Min.X, bounds.Max.X)
-	top := clampInt(line.Y-padY, bounds.Min.Y, bounds.Max.Y)
-	right := clampInt(line.X+maxInt(line.Width, 1)+padX, bounds.Min.X, bounds.Max.X)
-	bottom := clampInt(line.Y+maxInt(line.Height, 1)+padY, bounds.Min.Y, bounds.Max.Y)
+	left := clampInt(rect.Min.X, bounds.Min.X, bounds.Max.X)
+	top := clampInt(rect.Min.Y, bounds.Min.Y, bounds.Max.Y)
+	right := clampInt(rect.Max.X, bounds.Min.X, bounds.Max.X)
+	bottom := clampInt(rect.Max.Y, bounds.Min.Y, bounds.Max.Y)
 	if right-left < 8 || bottom-top < 8 {
 		return nil, false
 	}
@@ -484,6 +558,13 @@ func absInt(value int) int {
 		return -value
 	}
 	return value
+}
+
+func minInt(left, right int) int {
+	if left < right {
+		return left
+	}
+	return right
 }
 
 func defaultMeasurementPriors() rocom.MeasurementPriors {
