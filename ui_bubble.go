@@ -27,7 +27,7 @@ func newBubbleWidget(onTap func(), onDragStart func(), onDragEnd func()) *bubble
 }
 
 func (w *bubbleWidget) MinSize() fyne.Size {
-	return fyne.NewSize(60, 60)
+	return fyne.NewSize(52, 52)
 }
 
 func (w *bubbleWidget) Tapped(*fyne.PointEvent) {

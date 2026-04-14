@@ -4,7 +4,9 @@ package main
 
 import (
 	"bytes"
+	projectassets "egg-analyze/assets"
 	"image"
+	"image/color"
 	stddraw "image/draw"
 	_ "image/png"
 	"sync"
@@ -380,13 +382,24 @@ func renderNativeBubbleImage(width, height int) (*image.NRGBA, error) {
 	}
 
 	dst := image.NewNRGBA(image.Rect(0, 0, width, height))
-	xdraw.CatmullRom.Scale(dst, dst.Bounds(), src, src.Bounds(), stddraw.Over, nil)
+	cardInset := maxInt(2, width/14)
+	cardRect := image.Rect(cardInset, cardInset, width-cardInset, height-cardInset)
+	cardRect = fitSquareRect(cardRect)
+	if cardRect.Dx() <= 0 || cardRect.Dy() <= 0 {
+		cardRect = image.Rect(0, 0, width, height)
+	}
+
+	srcSquare := centerSquare(src.Bounds())
+	xdraw.CatmullRom.Scale(dst, cardRect, src, srcSquare, stddraw.Over, nil)
+
+	radius := maxInt(8, cardRect.Dx()/5)
+	applyRoundedRectAlpha(dst, cardRect, radius)
 	return dst, nil
 }
 
 func loadNativeBubbleSource() (image.Image, error) {
 	bubblePNGOnce.Do(func() {
-		bubbleSource, _, bubbleSourceErr = image.Decode(bytes.NewReader(bubblePNG))
+		bubbleSource, _, bubbleSourceErr = image.Decode(bytes.NewReader(projectassets.BubblePNG))
 	})
 	return bubbleSource, bubbleSourceErr
 }
@@ -417,4 +430,87 @@ func absInt32(v int32) int32 {
 		return -v
 	}
 	return v
+}
+
+func fitSquareRect(r image.Rectangle) image.Rectangle {
+	size := r.Dx()
+	if r.Dy() < size {
+		size = r.Dy()
+	}
+	if size <= 0 {
+		return image.Rectangle{}
+	}
+	x := r.Min.X + (r.Dx()-size)/2
+	y := r.Min.Y + (r.Dy()-size)/2
+	return image.Rect(x, y, x+size, y+size)
+}
+
+func centerSquare(r image.Rectangle) image.Rectangle {
+	size := r.Dx()
+	if r.Dy() < size {
+		size = r.Dy()
+	}
+	if size <= 0 {
+		return image.Rectangle{}
+	}
+	x := r.Min.X + (r.Dx()-size)/2
+	y := r.Min.Y + (r.Dy()-size)/2
+	return image.Rect(x, y, x+size, y+size)
+}
+
+func applyRoundedRectAlpha(img *image.NRGBA, rect image.Rectangle, radius int) {
+	if img == nil || rect.Empty() {
+		return
+	}
+	if radius < 1 {
+		return
+	}
+	maxRadius := rect.Dx() / 2
+	if rect.Dy()/2 < maxRadius {
+		maxRadius = rect.Dy() / 2
+	}
+	if radius > maxRadius {
+		radius = maxRadius
+	}
+
+	corners := [4]image.Point{
+		{X: rect.Min.X + radius, Y: rect.Min.Y + radius},
+		{X: rect.Max.X - radius - 1, Y: rect.Min.Y + radius},
+		{X: rect.Min.X + radius, Y: rect.Max.Y - radius - 1},
+		{X: rect.Max.X - radius - 1, Y: rect.Max.Y - radius - 1},
+	}
+
+	for y := rect.Min.Y; y < rect.Max.Y; y++ {
+		for x := rect.Min.X; x < rect.Max.X; x++ {
+			if insideRoundedRect(x, y, rect, radius, corners) {
+				continue
+			}
+			img.SetNRGBA(x, y, color.NRGBA{})
+		}
+	}
+}
+
+func insideRoundedRect(x, y int, rect image.Rectangle, radius int, corners [4]image.Point) bool {
+	if x >= rect.Min.X+radius && x < rect.Max.X-radius {
+		return true
+	}
+	if y >= rect.Min.Y+radius && y < rect.Max.Y-radius {
+		return true
+	}
+
+	for _, c := range corners {
+		dx := x - c.X
+		dy := y - c.Y
+		if dx*dx+dy*dy <= radius*radius {
+			return true
+		}
+	}
+	return false
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

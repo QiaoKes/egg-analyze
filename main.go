@@ -97,7 +97,7 @@ func main() {
 		state.startupAsync()
 	})
 
-	state.bubbleWindow.Resize(fyne.NewSize(60, 60))
+	state.bubbleWindow.Resize(fyne.NewSize(52, 52))
 	state.panelWindow.Resize(fyne.NewSize(360, 412))
 	state.resultWindow.Resize(fyne.NewSize(520, 680))
 	application.Run()
