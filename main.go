@@ -8,6 +8,7 @@ import (
 	"image/color"
 	_ "image/jpeg"
 	_ "image/png"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -140,6 +141,9 @@ func (s *uiState) buildPanelUI() {
 	s.panelSource.Alignment = fyne.TextAlignCenter
 	s.panelSource.Wrapping = fyne.TextWrapWord
 
+	projectURL, _ := url.Parse("https://github.com/QiaoKes/egg-analyze")
+	projectLink := widget.NewHyperlink("项目地址", projectURL)
+
 	title := newWindowDragLabel("洛克王国精灵蛋分析", s.panelWindow, fyne.TextAlignCenter)
 	description := widget.NewLabel("点击主按钮开始框选截图")
 	description.Alignment = fyne.TextAlignCenter
@@ -177,7 +181,8 @@ func (s *uiState) buildPanelUI() {
 		s.panelStatus,
 		layoutSpacer(2),
 		s.panelSource,
-		layoutSpacer(8),
+		container.NewCenter(projectLink),
+		layoutSpacer(4),
 		actions,
 	)
 
@@ -329,7 +334,6 @@ func (s *uiState) reloadDataset() error {
 	if info.FromCache {
 		source = "本地缓存"
 	}
-
 	s.panelSource.SetText(fmt.Sprintf("数据源：%s | 记录 %d | 更新时间\n%s", source, info.RecordCount, info.UpdatedAt.Format("2006-01-02 15:04:05")))
 	s.warmAtlasIndex()
 	return nil
