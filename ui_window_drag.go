@@ -6,6 +6,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -28,7 +29,7 @@ func (w *windowDragLabel) MinSize() fyne.Size {
 	txt.TextSize = 17
 	txt.TextStyle = fyne.TextStyle{Bold: true}
 	size := txt.MinSize()
-	return fyne.NewSize(size.Width+12, size.Height+10)
+	return fyne.NewSize(size.Width+8, size.Height+4)
 }
 
 func (w *windowDragLabel) Dragged(event *fyne.DragEvent) {
@@ -42,6 +43,18 @@ func (w *windowDragLabel) Dragged(event *fyne.DragEvent) {
 }
 
 func (w *windowDragLabel) DragEnd() {}
+
+func (w *windowDragLabel) MouseDown(ev *desktop.MouseEvent) {
+	if ev == nil || ev.Button != desktop.MouseButtonPrimary || w.window == nil {
+		return
+	}
+	if time.Now().After(w.nextDragAt) {
+		w.nextDragAt = time.Now().Add(220 * time.Millisecond)
+		beginNativeWindowDrag(w.window)
+	}
+}
+
+func (w *windowDragLabel) MouseUp(*desktop.MouseEvent) {}
 
 func (w *windowDragLabel) CreateRenderer() fyne.WidgetRenderer {
 	text := canvas.NewText(w.label, color.NRGBA{R: 0x18, G: 0x1F, B: 0x2D, A: 0xFF})
@@ -95,4 +108,52 @@ func (r *windowDragLabelRenderer) Objects() []fyne.CanvasObject {
 
 func (r *windowDragLabelRenderer) Destroy() {}
 
+type windowDragArea struct {
+	widget.BaseWidget
+	window     fyne.Window
+	nextDragAt time.Time
+}
+
+func newWindowDragArea(win fyne.Window) *windowDragArea {
+	w := &windowDragArea{window: win}
+	w.ExtendBaseWidget(w)
+	return w
+}
+
+func (w *windowDragArea) MinSize() fyne.Size {
+	return fyne.NewSize(1, 1)
+}
+
+func (w *windowDragArea) Dragged(*fyne.DragEvent) {
+	if w.window == nil {
+		return
+	}
+	if time.Now().After(w.nextDragAt) {
+		w.nextDragAt = time.Now().Add(220 * time.Millisecond)
+		beginNativeWindowDrag(w.window)
+	}
+}
+
+func (w *windowDragArea) DragEnd() {}
+
+func (w *windowDragArea) MouseDown(ev *desktop.MouseEvent) {
+	if ev == nil || ev.Button != desktop.MouseButtonPrimary || w.window == nil {
+		return
+	}
+	if time.Now().After(w.nextDragAt) {
+		w.nextDragAt = time.Now().Add(220 * time.Millisecond)
+		beginNativeWindowDrag(w.window)
+	}
+}
+
+func (w *windowDragArea) MouseUp(*desktop.MouseEvent) {}
+
+func (w *windowDragArea) CreateRenderer() fyne.WidgetRenderer {
+	bg := canvas.NewRectangle(color.Transparent)
+	return widget.NewSimpleRenderer(bg)
+}
+
 var _ fyne.Draggable = (*windowDragLabel)(nil)
+var _ desktop.Mouseable = (*windowDragLabel)(nil)
+var _ fyne.Draggable = (*windowDragArea)(nil)
+var _ desktop.Mouseable = (*windowDragArea)(nil)

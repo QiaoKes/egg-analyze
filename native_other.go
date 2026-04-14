@@ -31,3 +31,7 @@ func getNativeVisibleFrame(fyne.Window) (nativeWindowFrame, bool) {
 func setNativeWindowOrigin(fyne.Window, float32, float32) {}
 
 func beginNativeWindowDrag(fyne.Window) {}
+
+func setupNativeBubbleWindow(fyne.Window, func(), func()) bool {
+	return false
+}

@@ -97,7 +97,7 @@ func main() {
 		state.startupAsync()
 	})
 
-	state.bubbleWindow.Resize(fyne.NewSize(52, 52))
+	state.bubbleWindow.Resize(fyne.NewSize(60, 60))
 	state.panelWindow.Resize(fyne.NewSize(360, 412))
 	state.resultWindow.Resize(fyne.NewSize(520, 680))
 	application.Run()
@@ -120,6 +120,10 @@ func (s *uiState) newUtilityWindow(title string) fyne.Window {
 }
 
 func (s *uiState) buildBubbleUI() {
+	if setupNativeBubbleWindow(s.bubbleWindow, s.togglePanelWindow, s.rememberBubbleAnchorSoon) {
+		s.bubbleWindow.SetContent(canvas.NewRectangle(color.Transparent))
+		return
+	}
 	bubble := newBubbleWidget(s.togglePanelWindow, func() {
 		beginNativeWindowDrag(s.bubbleWindow)
 	}, s.rememberBubbleAnchorSoon)
@@ -148,6 +152,7 @@ func (s *uiState) buildPanelUI() {
 		newCompactGlassButton(theme.WindowMinimizeIcon(), s.hidePanelWindow),
 		title,
 	)
+	header = container.NewStack(newWindowDragArea(s.panelWindow), header)
 
 	captureButton := newPrimaryCaptureButton(func() {
 		s.beginCaptureSelection()
@@ -163,7 +168,6 @@ func (s *uiState) buildPanelUI() {
 	)
 
 	content := container.NewVBox(
-		layoutSpacer(2),
 		header,
 		layoutSpacer(2),
 		description,
@@ -193,6 +197,7 @@ func (s *uiState) buildResultUI() {
 		}),
 		newSecondaryActionButton("隐藏", theme.VisibilityOffIcon(), s.hideResultWindow),
 	), title)
+	toolbar = container.NewStack(newWindowDragArea(s.resultWindow), toolbar)
 
 	body := container.NewBorder(
 		container.NewPadded(toolbar),
@@ -223,7 +228,7 @@ func buildSurfaceCard(content fyne.CanvasObject, fill color.Color, stroke color.
 func buildFloatingWindowContent(card fyne.CanvasObject) fyne.CanvasObject {
 	return container.NewStack(
 		canvas.NewRectangle(color.Transparent),
-		container.NewCenter(card),
+		card,
 	)
 }
 
@@ -235,7 +240,7 @@ func layoutSpacer(height float32) fyne.CanvasObject {
 
 func (s *uiState) configureNativeWindows() {
 	configureNativeWindow(s.bubbleWindow, nativeWindowStyle{
-		CornerRadius:        37,
+		CornerRadius:        30,
 		Floating:            true,
 		Transparent:         true,
 		MovableByBackground: true,
@@ -613,7 +618,7 @@ func (s *uiState) showBubbleWindow() {
 		s.bubblePrimed = true
 		s.bubbleWindow.Show()
 		configureNativeWindow(s.bubbleWindow, nativeWindowStyle{
-			CornerRadius:        26,
+			CornerRadius:        30,
 			Floating:            true,
 			Transparent:         true,
 			MovableByBackground: true,
@@ -627,7 +632,7 @@ func (s *uiState) showBubbleWindow() {
 	}
 	s.bubbleWindow.Show()
 	style := nativeWindowStyle{
-		CornerRadius:        26,
+		CornerRadius:        30,
 		Floating:            true,
 		Transparent:         true,
 		MovableByBackground: true,
