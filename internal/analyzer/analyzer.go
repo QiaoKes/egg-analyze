@@ -93,7 +93,7 @@ func buildResults(engine *rocom.Engine, measurements []Measurement, topN int) []
 	for _, measurement := range measurements {
 		results = append(results, Result{
 			Measurement: measurement,
-			Candidates:  engine.Search(measurement.Size, measurement.Weight, topN),
+			Candidates:  engine.Search(measurement.Size*100, measurement.Weight, topN),
 		})
 	}
 	sort.Slice(results, func(i, j int) bool {

@@ -11,9 +11,10 @@ import (
 
 const (
 	appDirName          = "EggAnalyze"
-	defaultDatasetURL   = "https://rocom.mfsky.qzz.io/data/egg-measurements-final.json"
+	defaultDatasetURL   = "https://rocom.aoe.top/data/Pets.json"
+	legacyDatasetURL    = "https://rocom.mfsky.qzz.io/data/egg-measurements-final.json"
 	configFileName      = "config.json"
-	datasetCacheName    = "egg-measurements-final.json"
+	datasetCacheName    = "aoe-pets.json"
 	lastCaptureFileName = "last-capture.png"
 	runtimeDirName      = "runtime"
 )
@@ -159,7 +160,7 @@ func RuntimeDir() (string, error) {
 
 func normalize(cfg Config) Config {
 	def := Default()
-	if cfg.DatasetURL == "" {
+	if cfg.DatasetURL == "" || cfg.DatasetURL == legacyDatasetURL {
 		cfg.DatasetURL = def.DatasetURL
 	}
 	if cfg.CaptureMode == "" {

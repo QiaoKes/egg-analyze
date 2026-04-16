@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	projectassets "egg-analyze/assets"
 	"egg-analyze/internal/analyzer"
 	"egg-analyze/internal/atlas"
 	"egg-analyze/internal/capture"
@@ -73,6 +74,7 @@ func main() {
 
 	application := app.New()
 	application.Settings().SetTheme(newContrastTheme())
+	application.SetIcon(projectassets.BubbleResource)
 
 	state := &uiState{
 		app:    application,
@@ -489,20 +491,32 @@ func (s *uiState) renderResultCards(results []analyzer.Result) {
 	for idx, result := range results {
 		details := make([]fyne.CanvasObject, 0, len(result.Candidates)+1)
 		metrics := container.NewGridWithColumns(2,
-			buildMetricRow("Size", fmt.Sprintf("%.3f", result.Measurement.Size)),
-			buildMetricRow("Weight", fmt.Sprintf("%.3f", result.Measurement.Weight)),
+			buildMetricRow("身高", fmt.Sprintf("%.3f", result.Measurement.Size)),
+			buildMetricRow("体重", fmt.Sprintf("%.3f", result.Measurement.Weight)),
 		)
 		details = append(details, metrics)
 
 		for candidateIndex, candidate := range result.Candidates {
 			title := fmt.Sprintf("%d. %s (%s)", candidateIndex+1, candidate.Pet, candidate.PetID)
-			meta := fmt.Sprintf("概率 %.2f%% | 参考尺寸 %s | 参考重量 %s | %s", candidate.Probability, candidate.EggDiameter, candidate.EggWeight, candidate.MatchType)
+			metaParts := []string{
+				fmt.Sprintf("概率 %.2f%%", candidate.Probability),
+				"参考身高 " + candidate.EggHeight,
+				"参考体重 " + candidate.EggWeight,
+				candidate.MatchType,
+			}
+			if candidate.HatchLabel != "" {
+				metaParts = append(metaParts, "孵化 "+candidate.HatchLabel)
+			}
+			if !candidate.Implemented {
+				metaParts = append(metaParts, "未实装")
+			}
+			meta := strings.Join(metaParts, " | ")
 			line := widget.NewLabel(title + "\n" + meta)
 			line.Wrapping = fyne.TextWrapWord
 			if candidateIndex == 0 {
 				line.Importance = widget.HighImportance
 			}
-			details = append(details, s.buildCandidateRow(candidate.PetID, line))
+			details = append(details, s.buildCandidateRow(candidate.PortraitKey, line))
 		}
 
 		objects = append(objects, buildSurfaceCard(
@@ -528,17 +542,17 @@ func (s *uiState) buildEmptyResultCard() fyne.CanvasObject {
 	return buildSurfaceCard(label, color.NRGBA{R: 0xFB, G: 0xF8, B: 0xF1, A: 0x94}, color.NRGBA{R: 0xE0, G: 0xD1, B: 0xB6, A: 0xA4}, 20)
 }
 
-func (s *uiState) buildCandidateRow(petID string, content fyne.CanvasObject) fyne.CanvasObject {
+func (s *uiState) buildCandidateRow(spriteKey string, content fyne.CanvasObject) fyne.CanvasObject {
 	sprite := canvas.NewImageFromImage(buildPetPlaceholderImage())
 	sprite.FillMode = canvas.ImageFillContain
 	sprite.SetMinSize(fyne.NewSize(72, 72))
-	s.loadCandidateImage(petID, sprite)
+	s.loadCandidateImage(spriteKey, sprite)
 
 	return container.NewBorder(nil, nil, container.NewPadded(sprite), nil, content)
 }
 
-func (s *uiState) loadCandidateImage(petID string, target *canvas.Image) {
-	if s.atlas == nil || petID == "" {
+func (s *uiState) loadCandidateImage(spriteKey string, target *canvas.Image) {
+	if s.atlas == nil || spriteKey == "" {
 		return
 	}
 
@@ -546,10 +560,10 @@ func (s *uiState) loadCandidateImage(petID string, target *canvas.Image) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		img, err := s.atlas.Load(ctx, petID)
+		img, err := s.atlas.Load(ctx, spriteKey)
 		if err != nil {
 			if !errors.Is(err, os.ErrNotExist) {
-				fmt.Printf("load pet image %s failed: %v\n", petID, err)
+				fmt.Printf("load pet image %s failed: %v\n", spriteKey, err)
 			}
 			return
 		}

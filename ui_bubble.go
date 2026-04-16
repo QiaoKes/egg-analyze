@@ -65,6 +65,12 @@ func (w *bubbleWidget) DragEnd() {
 }
 
 func (w *bubbleWidget) CreateRenderer() fyne.WidgetRenderer {
+	if img, err := loadBubbleWidgetImage(); err == nil && img != nil {
+		asset := canvas.NewImageFromImage(img)
+		asset.FillMode = canvas.ImageFillContain
+		return widget.NewSimpleRenderer(asset)
+	}
+
 	shadow := canvas.NewCircle(color.NRGBA{R: 0x0F, G: 0x17, B: 0x24, A: 0x12})
 	body := canvas.NewCircle(color.NRGBA{R: 0xF8, G: 0xFA, B: 0xFE, A: 0xFF})
 	body.StrokeColor = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x90}

@@ -14,22 +14,41 @@ import (
 )
 
 type Dataset struct {
-	Total     int        `json:"total"`
-	TotalPets int        `json:"totalPets"`
-	Groups    []EggGroup `json:"groups"`
+	Pets []Pet
 }
 
-type EggGroup struct {
-	PetID      string        `json:"petId"`
-	Pet        string        `json:"pet"`
-	RangeItems []MeasureItem `json:"rangeItems"`
-	ExactItems []MeasureItem `json:"exactItems"`
+type Pet struct {
+	ID            int           `json:"id"`
+	Name          string        `json:"name"`
+	Localized     LocalizedPet  `json:"localized"`
+	Implemented   bool          `json:"implemented"`
+	EvolvesFromID *int          `json:"evolves_from_id"`
+	Breeding      *BreedingInfo `json:"breeding"`
 }
 
-type MeasureItem struct {
-	ID          int    `json:"id"`
-	EggDiameter string `json:"eggDiameter"`
-	EggWeight   string `json:"eggWeight"`
+type LocalizedPet struct {
+	ZH LocalizedPetName `json:"zh"`
+}
+
+type LocalizedPetName struct {
+	Name string `json:"name"`
+}
+
+type BreedingInfo struct {
+	BreedingVariant
+	Variants []BreedingVariant `json:"variants"`
+}
+
+type BreedingVariant struct {
+	ID         *int     `json:"id"`
+	PetID      *int     `json:"pet_id"`
+	Name       string   `json:"name"`
+	ModelID    *int     `json:"model_id"`
+	HatchData  *int     `json:"hatch_data"`
+	WeightLow  *float64 `json:"weight_low"`
+	WeightHigh *float64 `json:"weight_high"`
+	HeightLow  *float64 `json:"height_low"`
+	HeightHigh *float64 `json:"height_high"`
 }
 
 type SourceInfo struct {
@@ -81,8 +100,8 @@ func fetchDataset(ctx context.Context, url, cachePath string) (*Dataset, SourceI
 		return nil, SourceInfo{}, err
 	}
 
-	var dataset Dataset
-	if err := json.Unmarshal(data, &dataset); err != nil {
+	dataset, err := decodeDataset(data)
+	if err != nil {
 		return nil, SourceInfo{}, err
 	}
 
@@ -98,12 +117,12 @@ func fetchDataset(ctx context.Context, url, cachePath string) (*Dataset, SourceI
 		return nil, SourceInfo{}, err
 	}
 
-	return &dataset, SourceInfo{
+	return dataset, SourceInfo{
 		URL:         url,
 		FromCache:   false,
 		UpdatedAt:   info.ModTime(),
-		GroupCount:  len(dataset.Groups),
-		RecordCount: dataset.Total,
+		GroupCount:  len(dataset.Pets),
+		RecordCount: len(dataset.Pets),
 	}, nil
 }
 
@@ -113,8 +132,8 @@ func readCachedDataset(cachePath, url string) (*Dataset, SourceInfo, error) {
 		return nil, SourceInfo{}, err
 	}
 
-	var dataset Dataset
-	if err := json.Unmarshal(data, &dataset); err != nil {
+	dataset, err := decodeDataset(data)
+	if err != nil {
 		return nil, SourceInfo{}, err
 	}
 
@@ -123,11 +142,19 @@ func readCachedDataset(cachePath, url string) (*Dataset, SourceInfo, error) {
 		return nil, SourceInfo{}, err
 	}
 
-	return &dataset, SourceInfo{
+	return dataset, SourceInfo{
 		URL:         url,
 		FromCache:   true,
 		UpdatedAt:   info.ModTime(),
-		GroupCount:  len(dataset.Groups),
-		RecordCount: dataset.Total,
+		GroupCount:  len(dataset.Pets),
+		RecordCount: len(dataset.Pets),
 	}, nil
+}
+
+func decodeDataset(data []byte) (*Dataset, error) {
+	var pets []Pet
+	if err := json.Unmarshal(data, &pets); err != nil {
+		return nil, err
+	}
+	return &Dataset{Pets: pets}, nil
 }
