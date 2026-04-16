@@ -16,6 +16,11 @@ def bounds(box):
 
 
 def main():
+    if hasattr(sys.stdin, "reconfigure"):
+        sys.stdin.reconfigure(encoding="utf-8")
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
     engine = RapidOCR(
         det_limit_side_len=960,
         det_box_thresh=0.42,
@@ -60,7 +65,7 @@ def main():
                             "Height": height,
                         }
                     )
-            print(json.dumps({"ok": True, "lines": lines}, ensure_ascii=False), flush=True)
+            print(json.dumps({"ok": True, "lines": lines}), flush=True)
         except Exception as exc:
             print(
                 json.dumps(
@@ -69,7 +74,6 @@ def main():
                         "error": str(exc),
                         "traceback": traceback.format_exc(limit=1),
                     },
-                    ensure_ascii=False,
                 ),
                 flush=True,
             )
