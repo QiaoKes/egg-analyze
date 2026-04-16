@@ -1,33 +1,46 @@
-# 洛克王国精灵蛋分析
+# egg-analyze-v2
 
-一个用来分析洛克王国精灵蛋截图的小工具。
+Flutter 纯栈版 v2 骨架，目标平台为 `macOS / Windows / Android`。
 
-它可以帮你从截图里识别蛋的 `height` 和 `weight`，并给出对应的候选结果。适合手动导入图片，也适合直接截图后快速分析。
+## 结构
 
-## 能做什么
+```text
+egg-analyze-v2/
+  app/
+  packages/
+    egg_core/
+    egg_ocr/
+    egg_data/
+```
 
-- 识别截图里的蛋身高和重量
-- 支持一张图里同时分析多个蛋
-- 支持直接打开本地图片
-- 支持截图后直接分析
-- 给出候选结果，方便快速对照
+## 本地启动
 
-## 怎么用
+当前目录已经补齐 `android / macos / windows` 宿主工程。
 
-1. 启动程序
-2. 如果需要更新数据，点击 `刷新数据`
-3. 选择下面任意一种方式开始分析：
-   - 点击 `打开图片`，选择一张截图
-   - 点击 `截图分析`，框选你要识别的区域
-   - 使用启动时出现的悬浮启动器，直接触发截图分析
-4. 在悬浮结果窗查看快速结论，或打开主界面查看完整候选信息
+首次拉取后，在 `app/` 目录执行：
 
-## 使用建议
+```bash
+flutter create . --platforms=android,macos,windows
+flutter pub get
+```
 
-- 尽量截全单个蛋的信息区域
-- 图片越清晰，识别越稳定
-- 如果一张图里有多个蛋，尽量让每个蛋的信息完整出现
+如果需要同步本地包依赖，再分别执行：
 
-## 致谢
+```bash
+cd packages/egg_core && flutter pub get
+cd ../egg_ocr && flutter pub get
+cd ../egg_data && flutter pub get
+```
 
-- 参考站点：[`aoe-top/rocom.aoe.top`](https://github.com/aoe-top/rocom.aoe.top)
+## 实现范围
+
+- `egg_core`：匹配引擎、OCR 数值提取、概率计算
+- `egg_ocr`：桌面 `platform_ocr` + Android `google_mlkit_text_recognition`
+- `egg_data`：`Pets.json`、头像资源缓存
+- `app`：首页、结果页、设置页三页骨架
+
+## 当前限制
+
+- 未接入桌面截图、悬浮球、全局热键
+- Android 分享入口只补了 Manifest 与 Dart 监听，仍需真机联调
+- 还没有接入现有 `picture/` 真实样本图的自动回归夹具

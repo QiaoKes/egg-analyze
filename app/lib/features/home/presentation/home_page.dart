@@ -1,0 +1,206 @@
+import 'dart:io';
+
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../../../shared/providers.dart';
+
+class HomePage extends ConsumerStatefulWidget {
+  const HomePage({super.key});
+
+  @override
+  ConsumerState<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends ConsumerState<HomePage> {
+  bool _dragging = false;
+  bool _busy = false;
+
+  Future<void> _analyzeXFile(XFile file) async {
+    setState(() => _busy = true);
+    try {
+      final bytes = await file.readAsBytes();
+      await ref.read(analysisControllerProvider).analyzeBytes(
+            bytes,
+            label: file.name,
+          );
+      if (mounted) {
+        context.go('/result');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    final picker = ImagePicker();
+    final file = await picker.pickImage(source: source);
+    if (file == null) {
+      return;
+    }
+    await _analyzeXFile(file);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dataset = ref.watch(datasetSnapshotProvider);
+    final recentRecords = ref.watch(recentRecordsProvider);
+    final isDesktop = Platform.isMacOS || Platform.isWindows;
+
+    Widget importer = _ImportCard(
+      busy: _busy,
+      dragging: _dragging,
+      onOpenImage: () => _pickImage(ImageSource.gallery),
+      onTakePhoto:
+          Platform.isAndroid ? () => _pickImage(ImageSource.camera) : null,
+    );
+
+    if (isDesktop) {
+      importer = DropTarget(
+        onDragEntered: (_) => setState(() => _dragging = true),
+        onDragExited: (_) => setState(() => _dragging = false),
+        onDragDone: (detail) async {
+          setState(() => _dragging = false);
+          if (detail.files.isEmpty) {
+            return;
+          }
+          await _analyzeXFile(detail.files.first);
+        },
+        child: importer,
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Egg Analyze v2'),
+        actions: [
+          IconButton(
+            tooltip: '设置',
+            onPressed: () => context.push('/settings'),
+            icon: const Icon(Icons.settings_outlined),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            importer,
+            const SizedBox(height: 20),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: dataset.when(
+                  data: (snapshot) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('数据状态',
+                          style: TextStyle(fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 8),
+                      Text(snapshot.fromCache ? '来源：本地缓存' : '来源：远程拉取'),
+                      Text('更新时间：${snapshot.updatedAt.toLocal()}'),
+                      Text('精灵数量：${snapshot.dataset.pets.length}'),
+                    ],
+                  ),
+                  error: (error, _) => Text('数据加载失败：$error'),
+                  loading: () => const SizedBox(
+                    height: 64,
+                    child: Center(child: CircularProgressIndicator.adaptive()),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: recentRecords.when(
+                  data: (items) {
+                    if (items.isEmpty) {
+                      return const Text('最近记录为空');
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('最近记录',
+                            style: TextStyle(fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 12),
+                        for (final item in items)
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(item.label),
+                            subtitle: Text(item.createdAt.toLocal().toString()),
+                          ),
+                      ],
+                    );
+                  },
+                  error: (error, _) => Text('读取最近记录失败：$error'),
+                  loading: () => const SizedBox(
+                    height: 64,
+                    child: Center(child: CircularProgressIndicator.adaptive()),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ImportCard extends StatelessWidget {
+  const _ImportCard({
+    required this.busy,
+    required this.dragging,
+    required this.onOpenImage,
+    this.onTakePhoto,
+  });
+
+  final bool busy;
+  final bool dragging;
+  final VoidCallback onOpenImage;
+  final VoidCallback? onTakePhoto;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: dragging ? const Color(0xFFE3ECFF) : null,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('导入图片',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            const Text('桌面端支持打开图片和拖拽导入，Android 支持相册、拍照与系统分享。'),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                FilledButton.icon(
+                  onPressed: busy ? null : onOpenImage,
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: Text(busy ? '分析中...' : '打开图片'),
+                ),
+                if (onTakePhoto != null)
+                  OutlinedButton.icon(
+                    onPressed: busy ? null : onTakePhoto,
+                    icon: const Icon(Icons.photo_camera_outlined),
+                    label: const Text('拍照'),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

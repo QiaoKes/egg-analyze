@@ -1,0 +1,23 @@
+name: egg_data
+description: Data and cache layer for egg-analyze-v2.
+publish_to: 'none'
+version: 0.1.0-dev.1
+
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+  flutter: '>=3.24.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dio: ^5.9.0
+  egg_core:
+    path: ../egg_core
+  image: ^4.5.4
+  path: ^1.9.1
+  path_provider: ^2.1.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
