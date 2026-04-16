@@ -1,6 +1,7 @@
 import 'package:egg_ocr/egg_ocr.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../shared/providers.dart';
 
@@ -36,6 +37,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             child: ListTile(
               title: const Text('当前 OCR 引擎'),
               subtitle: Text(ocrLabel),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: ListTile(
+              title: const Text('OCR 基准测试'),
+              subtitle: const Text('用内置样本图真实调用 OCR 并统计提取命中率'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/benchmark'),
             ),
           ),
           const SizedBox(height: 16),

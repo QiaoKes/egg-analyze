@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/home/presentation/home_page.dart';
+import '../features/benchmark/presentation/benchmark_page.dart';
 import '../features/result/presentation/result_page.dart';
 import '../features/settings/presentation/settings_page.dart';
 
@@ -20,6 +21,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings',
         builder: (context, state) => const SettingsPage(),
+      ),
+      GoRoute(
+        path: '/benchmark',
+        builder: (context, state) => const BenchmarkPage(),
       ),
     ],
   );

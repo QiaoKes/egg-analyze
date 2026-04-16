@@ -26,9 +26,11 @@ class DefaultAnalysisService implements AnalysisService {
     final snapshot = await _datasetRepository.load();
     final engine = MatchingEngine(snapshot.dataset);
     final ocrDocument = await _ocrEngine.recognize(imageBytes);
-    final measurements = _extractor.extractMeasurements(
-      ocrDocument.lines,
-      engine.measurementPriors,
+    final measurements = await _extractor.extractBestMeasurements(
+      lines: ocrDocument.lines,
+      priors: engine.measurementPriors,
+      sourceBytes: imageBytes,
+      recognizeCrop: _ocrEngine.recognize,
     );
 
     final entries = measurements

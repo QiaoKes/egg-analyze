@@ -49,6 +49,8 @@ class Measurement {
     required this.anchorText,
     required this.anchor,
     required this.rawLines,
+    this.weightText,
+    this.weightBounds,
   });
 
   final double heightInMeters;
@@ -56,6 +58,8 @@ class Measurement {
   final String anchorText;
   final Offset anchor;
   final List<OcrLine> rawLines;
+  final String? weightText;
+  final Rect? weightBounds;
 }
 
 class AnalysisEntry {

@@ -34,11 +34,57 @@ class ResultPage extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const Text('原图预览',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Image.memory(
+                      result.sourceBytes,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text('来源：${result.sourceLabel}'),
                   const SizedBox(height: 8),
                   Text('分析时间：${result.analyzedAt.toLocal()}'),
                   const SizedBox(height: 8),
                   Text('OCR 行数：${result.ocrDocument.lines.length}'),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('OCR 原始行',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 12),
+                  if (result.ocrDocument.lines.isEmpty)
+                    const Text('没有 OCR 行')
+                  else
+                    for (final line in result.ocrDocument.lines)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          '"${line.text}" @ (${line.bounds.left.toStringAsFixed(0)}, ${line.bounds.top.toStringAsFixed(0)})',
+                        ),
+                      ),
                 ],
               ),
             ),
@@ -116,6 +162,11 @@ class _MeasurementCard extends StatelessWidget {
               ),
               const Divider(height: 1),
             ],
+            if (entry.candidates.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text('没有命中候选，通常说明 OCR 提取到了数值，但未落入公开区间。'),
+              ),
           ],
         ),
       ),
