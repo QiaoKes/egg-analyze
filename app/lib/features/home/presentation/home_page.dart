@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:desktop_drop/desktop_drop.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -30,6 +31,13 @@ class _HomePageState extends ConsumerState<HomePage> {
       if (mounted) {
         context.go('/result');
       }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('导入失败：$error')),
+      );
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -38,6 +46,20 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Future<void> _pickImage(ImageSource source) async {
+    final isDesktop = Platform.isMacOS || Platform.isWindows;
+    if (isDesktop && source == ImageSource.gallery) {
+      const typeGroup = XTypeGroup(
+        label: 'images',
+        extensions: <String>['png', 'jpg', 'jpeg', 'webp'],
+      );
+      final file = await openFile(acceptedTypeGroups: <XTypeGroup>[typeGroup]);
+      if (file == null) {
+        return;
+      }
+      await _analyzeXFile(file);
+      return;
+    }
+
     final picker = ImagePicker();
     final file = await picker.pickImage(source: source);
     if (file == null) {
