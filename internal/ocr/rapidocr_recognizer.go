@@ -147,6 +147,10 @@ func (r *rapidOCRRecognizer) ensureProcess() error {
 
 	cmd := exec.Command(r.python, r.scriptPath)
 	configureCommand(cmd)
+	cmd.Env = append(os.Environ(),
+		"PYTHONUTF8=1",
+		"PYTHONIOENCODING=utf-8",
+	)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
