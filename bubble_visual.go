@@ -30,7 +30,7 @@ func loadBubbleWidgetImage() (image.Image, error) {
 		const canvasSize = 128
 		srcSquare := bubbleWidgetCenterSquare(src.Bounds())
 		dst := image.NewNRGBA(image.Rect(0, 0, canvasSize, canvasSize))
-		cardInset := maxInt(2, canvasSize/14)
+		cardInset := bubbleMaxInt(2, canvasSize/14)
 		cardRect := image.Rect(cardInset, cardInset, canvasSize-cardInset, canvasSize-cardInset)
 		cardRect = bubbleWidgetFitSquareRect(cardRect)
 		if cardRect.Dx() <= 0 || cardRect.Dy() <= 0 {
@@ -38,7 +38,7 @@ func loadBubbleWidgetImage() (image.Image, error) {
 		}
 
 		xdraw.CatmullRom.Scale(dst, cardRect, src, srcSquare, stddraw.Over, nil)
-		applyBubbleRoundedRectAlpha(dst, cardRect, maxInt(8, cardRect.Dx()/5))
+		applyBubbleRoundedRectAlpha(dst, cardRect, bubbleMaxInt(8, cardRect.Dx()/5))
 		bubbleWidgetImage = dst
 	})
 	return bubbleWidgetImage, bubbleWidgetImageErr
@@ -59,7 +59,7 @@ func bubbleWidgetCenterSquare(r image.Rectangle) image.Rectangle {
 }
 
 func bubbleWidgetFitSquareRect(r image.Rectangle) image.Rectangle {
-	size := minInt(r.Dx(), r.Dy())
+	size := bubbleMinInt(r.Dx(), r.Dy())
 	if size <= 0 {
 		return r
 	}
@@ -70,7 +70,7 @@ func bubbleWidgetFitSquareRect(r image.Rectangle) image.Rectangle {
 }
 
 func applyBubbleRoundedRectAlpha(img *image.NRGBA, rect image.Rectangle, radius int) {
-	radius = minInt(radius, minInt(rect.Dx(), rect.Dy())/2)
+	radius = bubbleMinInt(radius, bubbleMinInt(rect.Dx(), rect.Dy())/2)
 	if radius <= 0 {
 		return
 	}
@@ -86,8 +86,8 @@ func applyBubbleRoundedRectAlpha(img *image.NRGBA, rect image.Rectangle, radius 
 			inside := x >= innerLeft && x < innerRight
 			inside = inside || y >= innerTop && y < innerBottom
 			if !inside {
-				cx := clampInt(x, innerLeft, innerRight-1)
-				cy := clampInt(y, innerTop, innerBottom-1)
+				cx := bubbleClampInt(x, innerLeft, innerRight-1)
+				cy := bubbleClampInt(y, innerTop, innerBottom-1)
 				dx := float64(x - cx)
 				dy := float64(y - cy)
 				if dx*dx+dy*dy > radiusSquared {
@@ -99,18 +99,18 @@ func applyBubbleRoundedRectAlpha(img *image.NRGBA, rect image.Rectangle, radius 
 	}
 }
 
-func clampInt(value, minValue, maxValue int) int {
+func bubbleClampInt(value, minValue, maxValue int) int {
 	return int(math.Max(float64(minValue), math.Min(float64(maxValue), float64(value))))
 }
 
-func minInt(a, b int) int {
+func bubbleMinInt(a, b int) int {
 	if a < b {
 		return a
 	}
 	return b
 }
 
-func maxInt(a, b int) int {
+func bubbleMaxInt(a, b int) int {
 	if a > b {
 		return a
 	}
