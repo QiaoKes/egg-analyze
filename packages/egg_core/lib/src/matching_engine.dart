@@ -79,10 +79,20 @@ class MatchingEngine {
       return left.petName.compareTo(right.petName);
     });
 
-    if (ranked.length <= limit) {
-      return ranked;
+    final uniqueByName = <Candidate>[];
+    final seenNames = <String>{};
+    for (final item in ranked) {
+      final normalizedName = item.petName.trim();
+      if (!seenNames.add(normalizedName)) {
+        continue;
+      }
+      uniqueByName.add(item);
     }
-    return ranked.take(limit).toList(growable: false);
+
+    if (uniqueByName.length <= limit) {
+      return uniqueByName;
+    }
+    return uniqueByName.take(limit).toList(growable: false);
   }
 
   static MeasurementPriors _buildPriors(PetsDataset dataset) {

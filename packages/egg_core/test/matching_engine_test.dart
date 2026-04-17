@@ -53,6 +53,48 @@ void main() {
     expect(engine.measurementPriors.diameter.min, closeTo(0.24, 0.001));
     expect(engine.measurementPriors.weight.min, closeTo(4.69, 0.001));
   });
+
+  test(
+      'keeps only one candidate per pet name and backfills with next unique name',
+      () {
+    final engine = MatchingEngine(
+      PetsDataset(
+        pets: [
+          _pet(
+            id: 3442,
+            name: 'xiaoxingguang',
+            localizedName: '小星光',
+            implemented: true,
+            variants: [_variant(33, 46, 9630, 14480)],
+          ),
+          _pet(
+            id: 3193,
+            name: 'xiaoxingguang_alt',
+            localizedName: '小星光',
+            implemented: true,
+            variants: [_variant(33, 46, 9630, 14480)],
+          ),
+          _pet(
+            id: 3357,
+            name: 'diandongchangjinglu',
+            localizedName: '电动长颈鹿',
+            implemented: true,
+            variants: [_variant(30, 42, 10430, 14720)],
+          ),
+        ],
+      ),
+    );
+
+    final matches = engine.search(
+      heightInCentimeters: 42,
+      weightInKg: 13.0,
+      limit: 5,
+    );
+
+    expect(matches.map((item) => item.petName).where((name) => name == '小星光'),
+        hasLength(1));
+    expect(matches.map((item) => item.petName), contains('电动长颈鹿'));
+  });
 }
 
 Pet _pet({

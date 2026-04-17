@@ -25,83 +25,149 @@ class ResultPage extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('分析结果')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= 720;
+          final preview = _SourcePreviewCard(result: result);
+          final results = _ResultPanel(result: result);
+
+          if (!wide) {
+            return ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                preview,
+                const SizedBox(height: 20),
+                SizedBox(
+                  height: 560,
+                  child: results,
+                ),
+              ],
+            );
+          }
+
+          final contentHeight = constraints.maxHeight - 40;
+          return Padding(
+            padding: const EdgeInsets.all(20),
+            child: SizedBox(
+              height: contentHeight,
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('原图预览',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 12),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.memory(
-                      result.sourceBytes,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  Expanded(
+                    flex: 5,
+                    child: SizedBox(
+                      height: contentHeight,
+                      child: preview,
+                    ),
+                  ),
+                  const SizedBox(width: 20),
+                  Expanded(
+                    flex: 6,
+                    child: SizedBox(
+                      height: contentHeight,
+                      child: results,
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-          const SizedBox(height: 20),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('来源：${result.sourceLabel}'),
-                  const SizedBox(height: 8),
-                  Text('分析时间：${result.analyzedAt.toLocal()}'),
-                  const SizedBox(height: 8),
-                  Text('OCR 行数：${result.ocrDocument.lines.length}'),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('OCR 原始行',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 12),
-                  if (result.ocrDocument.lines.isEmpty)
-                    const Text('没有 OCR 行')
-                  else
-                    for (final line in result.ocrDocument.lines)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Text(
-                          '"${line.text}" @ (${line.bounds.left.toStringAsFixed(0)}, ${line.bounds.top.toStringAsFixed(0)})',
-                        ),
-                      ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          if (result.entries.isEmpty)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('未提取到有效的身高/体重。'),
-              ),
-            ),
-          for (var i = 0; i < result.entries.length; i++) ...[
-            _MeasurementCard(index: i + 1, entry: result.entries[i]),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SourcePreviewCard extends StatelessWidget {
+  const _SourcePreviewCard({required this.result});
+
+  final AnalysisResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('图片预览', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 12),
+            Text('来源：${result.sourceLabel}'),
+            const SizedBox(height: 8),
+            Text('分析时间：${result.analyzedAt.toLocal()}'),
             const SizedBox(height: 16),
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  width: double.infinity,
+                  color: const Color(0xFFF4F6FA),
+                  alignment: Alignment.center,
+                  child: Image.memory(
+                    result.sourceBytes,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            ),
           ],
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ResultPanel extends StatefulWidget {
+  const _ResultPanel({required this.result});
+
+  final AnalysisResult result;
+
+  @override
+  State<_ResultPanel> createState() => _ResultPanelState();
+}
+
+class _ResultPanelState extends State<_ResultPanel> {
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Scrollbar(
+          controller: _scrollController,
+          thumbVisibility: true,
+          child: ListView(
+            controller: _scrollController,
+            children: [
+              const Text('识别结果', style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 12),
+              if (widget.result.entries.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: Text('未提取到有效的身高/体重。'),
+                ),
+              for (var i = 0; i < widget.result.entries.length; i++) ...[
+                _MeasurementCard(index: i + 1, entry: widget.result.entries[i]),
+                const SizedBox(height: 16),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -119,6 +185,8 @@ class _MeasurementCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      elevation: 0,
+      color: const Color(0xFFF7F9FD),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
