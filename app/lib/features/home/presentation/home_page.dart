@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:screen_capturer/screen_capturer.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../../shared/desktop_window_actions.dart';
 import '../../../shared/providers.dart';
@@ -69,6 +72,73 @@ class _HomePageState extends ConsumerState<HomePage> {
     await _analyzeXFile(file);
   }
 
+  Future<void> _captureRegionAndAnalyze() async {
+    if (_busy) {
+      return;
+    }
+    setState(() => _busy = true);
+    final shouldHideWindow = Platform.isMacOS || Platform.isWindows;
+    try {
+      if (Platform.isMacOS) {
+        final allowed = await screenCapturer.isAccessAllowed();
+        if (!allowed) {
+          await screenCapturer.requestAccess();
+          if (!mounted) {
+            return;
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('请先在系统设置中允许屏幕录制权限，然后再次点击截屏分析。'),
+            ),
+          );
+          return;
+        }
+      }
+
+      if (shouldHideWindow) {
+        await windowManager.hide();
+        await Future<void>.delayed(const Duration(milliseconds: 160));
+      }
+
+      final tempDir = await getTemporaryDirectory();
+      final imagePath =
+          '${tempDir.path}/egg-analyze-v2-screenshot-${DateTime.now().millisecondsSinceEpoch}.png';
+
+      final captured = await screenCapturer.capture(
+        mode: CaptureMode.region,
+        imagePath: imagePath,
+        copyToClipboard: false,
+        silent: true,
+      );
+      if (captured?.imageBytes == null) {
+        return;
+      }
+
+      await ref.read(analysisControllerProvider).analyzeBytes(
+            captured!.imageBytes!,
+            label: '区域截图',
+          );
+      if (mounted) {
+        context.go('/result');
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('截屏分析失败：$error')),
+      );
+    } finally {
+      if (shouldHideWindow) {
+        await windowManager.show();
+        await windowManager.focus();
+      }
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final dataset = ref.watch(datasetSnapshotProvider);
@@ -80,6 +150,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       dragging: _dragging,
       showScreenshotAction: isDesktop,
       onOpenImage: () => _pickImage(ImageSource.gallery),
+      onCaptureScreenshot: isDesktop ? _captureRegionAndAnalyze : null,
       onTakePhoto:
           Platform.isAndroid ? () => _pickImage(ImageSource.camera) : null,
     );
@@ -159,6 +230,7 @@ class _ImportCard extends StatelessWidget {
     required this.dragging,
     required this.showScreenshotAction,
     required this.onOpenImage,
+    required this.onCaptureScreenshot,
     this.onTakePhoto,
   });
 
@@ -166,6 +238,7 @@ class _ImportCard extends StatelessWidget {
   final bool dragging;
   final bool showScreenshotAction;
   final VoidCallback onOpenImage;
+  final VoidCallback? onCaptureScreenshot;
   final VoidCallback? onTakePhoto;
 
   @override
@@ -193,9 +266,9 @@ class _ImportCard extends StatelessWidget {
                 ),
                 if (showScreenshotAction)
                   OutlinedButton.icon(
-                    onPressed: null,
+                    onPressed: busy ? null : onCaptureScreenshot,
                     icon: const Icon(Icons.screenshot_monitor_outlined),
-                    label: const Text('截屏分析'),
+                    label: Text(busy ? '分析中...' : '截屏分析'),
                   ),
                 if (onTakePhoto != null)
                   OutlinedButton.icon(

@@ -44,6 +44,7 @@ class DesktopWindowController with WindowListener {
     await windowManager.waitUntilReadyToShow(options, () async {
       await windowManager.setAsFrameless();
       await windowManager.setHasShadow(false);
+      await windowManager.setAlwaysOnTop(true);
       await windowManager.setResizable(false);
       await windowManager.setMinimizable(false);
       await windowManager.setMaximizable(false);
@@ -88,7 +89,7 @@ class DesktopWindowController with WindowListener {
     }
     _bubbleMode = false;
     await windowManager.setHasShadow(true);
-    await windowManager.setAlwaysOnTop(false);
+    await windowManager.setAlwaysOnTop(true);
     await windowManager.setSkipTaskbar(false);
     await windowManager.setResizable(true);
     await windowManager.setMinimizable(true);
