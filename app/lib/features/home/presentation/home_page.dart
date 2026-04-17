@@ -73,6 +73,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget build(BuildContext context) {
     final dataset = ref.watch(datasetSnapshotProvider);
     final isDesktop = Platform.isMacOS || Platform.isWindows;
+    final showAppBar = MediaQuery.sizeOf(context).width >= 320;
 
     Widget importer = _ImportCard(
       busy: _busy,
@@ -98,21 +99,23 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Egg Analyze v2'),
-        actions: [
-          ...buildDesktopWindowActions(
-            context,
-            ref,
-            currentRoute: '/',
-          ),
-          IconButton(
-            tooltip: '设置',
-            onPressed: () => context.push('/settings'),
-            icon: const Icon(Icons.settings_outlined),
-          ),
-        ],
-      ),
+      appBar: showAppBar
+          ? AppBar(
+              title: const Text('Egg Analyze v2'),
+              actions: [
+                ...buildDesktopWindowActions(
+                  context,
+                  ref,
+                  currentRoute: '/',
+                ),
+                IconButton(
+                  tooltip: '设置',
+                  onPressed: () => context.push('/settings'),
+                  icon: const Icon(Icons.settings_outlined),
+                ),
+              ],
+            )
+          : null,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(20),

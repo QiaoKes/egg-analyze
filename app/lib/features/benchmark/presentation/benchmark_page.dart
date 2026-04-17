@@ -35,8 +35,9 @@ class _BenchmarkPageState extends ConsumerState<BenchmarkPage> {
 
   @override
   Widget build(BuildContext context) {
+    final showAppBar = MediaQuery.sizeOf(context).width >= 320;
     return Scaffold(
-      appBar: AppBar(title: const Text('OCR 基准测试')),
+      appBar: showAppBar ? AppBar(title: const Text('OCR 基准测试')) : null,
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [

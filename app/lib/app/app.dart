@@ -25,7 +25,6 @@ class _EggAnalyzeV2AppState extends ConsumerState<EggAnalyzeV2App> {
       await controller.initialize();
       if (!_desktopBootstrapped && controller.isDesktop) {
         _desktopBootstrapped = true;
-        await controller.enterBubbleMode();
         ref.read(appRouterProvider).go('/bubble');
       }
     });

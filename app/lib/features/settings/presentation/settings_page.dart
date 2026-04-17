@@ -21,16 +21,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget build(BuildContext context) {
     final dataset = ref.watch(datasetSnapshotProvider);
     final ocrLabel = currentOcrEngineLabel();
+    final showAppBar = MediaQuery.sizeOf(context).width >= 320;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('设置'),
-        actions: buildDesktopWindowActions(
-          context,
-          ref,
-          currentRoute: '/settings',
-        ),
-      ),
+      appBar: showAppBar
+          ? AppBar(
+              title: const Text('设置'),
+              actions: buildDesktopWindowActions(
+                context,
+                ref,
+                currentRoute: '/settings',
+              ),
+            )
+          : null,
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [

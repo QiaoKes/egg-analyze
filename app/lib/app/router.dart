@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -8,8 +10,10 @@ import '../features/result/presentation/result_page.dart';
 import '../features/settings/presentation/settings_page.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
+  final initialLocation =
+      Platform.isMacOS || Platform.isWindows ? '/bubble' : '/';
   return GoRouter(
-    initialLocation: '/',
+    initialLocation: initialLocation,
     routes: [
       GoRoute(
         path: '/bubble',

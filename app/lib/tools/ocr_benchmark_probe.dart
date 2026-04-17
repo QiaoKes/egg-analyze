@@ -15,11 +15,13 @@ Future<void> main() async {
     final report = await container.read(benchmarkRunnerProvider).run();
 
     for (final item in report.cases) {
-      print('CASE ${item.config.caseName}: ${item.passed ? 'PASS' : 'FAIL'}');
-      print('  group: ${item.config.sourceGroup}');
-      print('  ocr_lines: ${item.ocrDocument.lines.length}');
+      debugPrint(
+        'CASE ${item.config.caseName}: ${item.passed ? 'PASS' : 'FAIL'}',
+      );
+      debugPrint('  group: ${item.config.sourceGroup}');
+      debugPrint('  ocr_lines: ${item.ocrDocument.lines.length}');
       for (final line in item.ocrDocument.lines.take(8)) {
-        print(
+        debugPrint(
           '    - ${line.text} @ '
           '(${line.bounds.left.toStringAsFixed(1)}, '
           '${line.bounds.top.toStringAsFixed(1)}, '
@@ -27,20 +29,20 @@ Future<void> main() async {
           '${line.bounds.height.toStringAsFixed(1)})',
         );
       }
-      print(
+      debugPrint(
         '  expected: ${item.config.expectedMeasurements.map((e) => '(${e.size.toStringAsFixed(3)}, ${e.weight.toStringAsFixed(3)})').join(', ')}',
       );
-      print(
+      debugPrint(
         '  actual:   ${item.measurements.map((m) => '(${m.heightInMeters.toStringAsFixed(3)}, ${m.weightInKg.toStringAsFixed(3)})').join(', ')}',
       );
       if (item.entries.isNotEmpty && item.entries.first.candidates.isNotEmpty) {
         final top = item.entries.first.candidates.first;
-        print(
+        debugPrint(
           '  top1: ${top.petName} prob=${top.probability.toStringAsFixed(2)} '
           'height=${top.heightRangeLabel} weight=${top.weightRangeLabel}',
         );
       }
-      print('');
+      debugPrint('');
     }
 
     final summary = {
@@ -89,8 +91,8 @@ Future<void> main() async {
       flush: true,
     );
 
-    print('SUMMARY ${report.passedCount}/${report.totalCount} passed');
-    print('REPORT ${outputFile.path}');
+    debugPrint('SUMMARY ${report.passedCount}/${report.totalCount} passed');
+    debugPrint('REPORT ${outputFile.path}');
   } finally {
     container.dispose();
   }

@@ -1,6 +1,7 @@
 import 'package:egg_core/egg_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../shared/portrait_image.dart';
 import '../../../shared/providers.dart';
@@ -11,12 +12,18 @@ class ResultPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final result = ref.watch(currentAnalysisResultProvider);
+    final showAppBar = MediaQuery.sizeOf(context).width >= 320;
     if (result == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('分析结果')),
+        appBar: showAppBar
+            ? AppBar(
+                leading: const _HomeBackButton(),
+                title: const Text('分析结果'),
+              )
+            : null,
         body: Center(
           child: FilledButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => context.go('/'),
             child: const Text('先返回首页导入图片'),
           ),
         ),
@@ -24,7 +31,12 @@ class ResultPage extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('分析结果')),
+      appBar: showAppBar
+          ? AppBar(
+              leading: const _HomeBackButton(),
+              title: const Text('分析结果'),
+            )
+          : null,
       body: LayoutBuilder(
         builder: (context, constraints) {
           final wide = constraints.maxWidth >= 720;
@@ -74,6 +86,19 @@ class ResultPage extends ConsumerWidget {
           );
         },
       ),
+    );
+  }
+}
+
+class _HomeBackButton extends StatelessWidget {
+  const _HomeBackButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: '返回首页',
+      onPressed: () => context.go('/'),
+      icon: const Icon(Icons.arrow_back_rounded),
     );
   }
 }

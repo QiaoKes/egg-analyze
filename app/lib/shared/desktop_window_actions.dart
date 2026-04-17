@@ -28,10 +28,9 @@ List<Widget> buildDesktopWindowActions(
         message: '缩为悬浮球',
         child: IconButton(
           onPressed: () async {
-            await controller.enterBubbleMode();
-            if (context.mounted) {
+            await controller.transitionToBubble(() {
               context.go('/bubble');
-            }
+            });
           },
           icon: const Icon(Icons.circle_outlined),
         ),

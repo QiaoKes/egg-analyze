@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,10 @@ import 'package:window_manager/window_manager.dart';
 class DesktopWindowController with WindowListener {
   static const _bubbleXKey = 'desktop_bubble_x';
   static const _bubbleYKey = 'desktop_bubble_y';
+  static const Size _bubbleSize = Size(60, 60);
+  static const Size _defaultFullSize = Size(920, 640);
+  static const Size _minimumFullSize = Size(760, 560);
+  static const Duration _transitionDuration = Duration(milliseconds: 120);
 
   bool _initialized = false;
   bool _bubbleMode = false;
@@ -25,9 +30,9 @@ class DesktopWindowController with WindowListener {
     await windowManager.ensureInitialized();
     windowManager.addListener(this);
     const options = WindowOptions(
-      size: Size(68, 68),
-      minimumSize: Size(68, 68),
-      maximumSize: Size(68, 68),
+      size: _bubbleSize,
+      minimumSize: _bubbleSize,
+      maximumSize: _bubbleSize,
       center: false,
       backgroundColor: Colors.transparent,
       titleBarStyle: TitleBarStyle.hidden,
@@ -37,6 +42,10 @@ class DesktopWindowController with WindowListener {
     );
     await windowManager.waitUntilReadyToShow(options, () async {
       await windowManager.setAsFrameless();
+      await windowManager.setHasShadow(false);
+      await windowManager.setResizable(false);
+      await windowManager.setMinimizable(false);
+      await windowManager.setMaximizable(false);
       await _restoreBubblePositionOrDefault();
       await windowManager.show();
       await windowManager.focus();
@@ -55,18 +64,19 @@ class DesktopWindowController with WindowListener {
     if (!isDesktop || _bubbleMode) {
       return;
     }
-    _lastFullBounds ??= await windowManager.getBounds();
+    _lastFullBounds = await windowManager.getBounds();
     _bubbleMode = true;
     await windowManager.setAsFrameless();
+    await windowManager.setHasShadow(false);
     await windowManager.setAlwaysOnTop(true);
     await windowManager.setSkipTaskbar(true);
     await windowManager.setResizable(false);
     await windowManager.setMinimizable(false);
     await windowManager.setMaximizable(false);
     await windowManager.setBackgroundColor(Colors.transparent);
-    await windowManager.setMinimumSize(const Size(68, 68));
-    await windowManager.setMaximumSize(const Size(68, 68));
-    await windowManager.setSize(const Size(68, 68));
+    await windowManager.setMinimumSize(_bubbleSize);
+    await windowManager.setMaximumSize(_bubbleSize);
+    await windowManager.setSize(_bubbleSize);
     await _restoreBubblePositionOrDefault();
     await windowManager.focus();
   }
@@ -76,6 +86,7 @@ class DesktopWindowController with WindowListener {
       return;
     }
     _bubbleMode = false;
+    await windowManager.setHasShadow(true);
     await windowManager.setAlwaysOnTop(false);
     await windowManager.setSkipTaskbar(false);
     await windowManager.setResizable(true);
@@ -86,15 +97,39 @@ class DesktopWindowController with WindowListener {
       windowButtonVisibility: true,
     );
     await windowManager.setBackgroundColor(Colors.white);
-    await windowManager.setMinimumSize(const Size(900, 640));
+    await windowManager.setMinimumSize(_minimumFullSize);
     await windowManager.setMaximumSize(const Size(-1, -1));
     if (_lastFullBounds != null) {
-      await windowManager.setBounds(_lastFullBounds!, animate: true);
+      await windowManager.setBounds(_lastFullBounds!);
     } else {
-      await windowManager.setSize(const Size(1040, 720));
+      await windowManager.setSize(_defaultFullSize);
       await windowManager.center();
     }
     await windowManager.focus();
+  }
+
+  Future<void> transitionToBubble(FutureOr<void> Function() routeChange) async {
+    if (!isDesktop) {
+      await routeChange();
+      return;
+    }
+    await _animateOpacity(from: 1, to: 0);
+    await routeChange();
+    await Future<void>.delayed(const Duration(milliseconds: 16));
+    await enterBubbleMode();
+    await _animateOpacity(from: 0, to: 1);
+  }
+
+  Future<void> transitionToFull(FutureOr<void> Function() routeChange) async {
+    if (!isDesktop) {
+      await routeChange();
+      return;
+    }
+    await _animateOpacity(from: 1, to: 0);
+    await exitBubbleMode();
+    await routeChange();
+    await Future<void>.delayed(const Duration(milliseconds: 16));
+    await _animateOpacity(from: 0, to: 1);
   }
 
   @override
@@ -102,7 +137,7 @@ class DesktopWindowController with WindowListener {
     if (!_bubbleMode) {
       return;
     }
-    _persistBubblePosition();
+    unawaited(_persistBubblePosition());
   }
 
   Future<void> disposeController() async {
@@ -120,7 +155,7 @@ class DesktopWindowController with WindowListener {
       await windowManager.setPosition(Offset(dx, dy));
       return;
     }
-    await windowManager.setAlignment(Alignment.topRight, animate: true);
+    await windowManager.setAlignment(Alignment.topRight);
   }
 
   Future<void> _persistBubblePosition() async {
@@ -128,5 +163,25 @@ class DesktopWindowController with WindowListener {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_bubbleXKey, position.dx);
     await prefs.setDouble(_bubbleYKey, position.dy);
+  }
+
+  Future<void> _animateOpacity({
+    required double from,
+    required double to,
+  }) async {
+    if (!isDesktop) {
+      return;
+    }
+    const steps = 4;
+    final delta = (to - from) / steps;
+    for (var i = 0; i <= steps; i++) {
+      final value = (from + delta * i).clamp(0.0, 1.0);
+      await windowManager.setOpacity(value);
+      if (i < steps) {
+        await Future<void>.delayed(
+          Duration(milliseconds: (_transitionDuration.inMilliseconds / steps).round()),
+        );
+      }
+    }
   }
 }
