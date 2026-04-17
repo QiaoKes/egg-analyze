@@ -7,6 +7,7 @@ import 'package:egg_data/egg_data.dart';
 import 'package:egg_ocr/egg_ocr.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'desktop_window_controller.dart';
 import 'recent_analysis_store.dart';
 
 const appVersion = '0.1.0-dev.1';
@@ -47,6 +48,15 @@ final currentAnalysisResultProvider =
 final recentAnalysisStoreProvider = Provider<RecentAnalysisStore>(
   (ref) => RecentAnalysisStore(),
 );
+
+final desktopWindowControllerProvider =
+    Provider<DesktopWindowController>((ref) {
+  final controller = DesktopWindowController();
+  ref.onDispose(() {
+    controller.disposeController();
+  });
+  return controller;
+});
 
 final recentRecordsProvider =
     AsyncNotifierProvider<RecentRecordsController, List<RecentAnalysisRecord>>(
@@ -89,13 +99,6 @@ class AnalysisController {
           sourceLabel: label,
         );
     ref.read(currentAnalysisResultProvider.notifier).state = result;
-    await ref.read(recentRecordsProvider.notifier).addRecord(
-          RecentAnalysisRecord(
-            id: '${DateTime.now().microsecondsSinceEpoch}',
-            label: label,
-            createdAt: DateTime.now(),
-          ),
-        );
     return result;
   }
 }

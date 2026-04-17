@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../shared/desktop_window_actions.dart';
 import '../../../shared/providers.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -22,7 +23,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final ocrLabel = currentOcrEngineLabel();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('设置')),
+      appBar: AppBar(
+        title: const Text('设置'),
+        actions: buildDesktopWindowActions(
+          context,
+          ref,
+          currentRoute: '/settings',
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -83,24 +91,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('缓存与记录',
+                  const Text('图片缓存',
                       style: TextStyle(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: _clearing ? null : _clearPortraitCache,
-                        icon: const Icon(Icons.image_not_supported_outlined),
-                        label: const Text('清理图片缓存'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: _clearing ? null : _clearRecentRecords,
-                        icon: const Icon(Icons.history_toggle_off_outlined),
-                        label: const Text('清空最近记录'),
-                      ),
-                    ],
+                  OutlinedButton.icon(
+                    onPressed: _clearing ? null : _clearPortraitCache,
+                    icon: const Icon(Icons.image_not_supported_outlined),
+                    label: const Text('清理图片缓存'),
                   ),
                 ],
               ),
@@ -127,17 +124,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     setState(() => _clearing = true);
     try {
       await ref.read(portraitRepositoryProvider).clearCache();
-    } finally {
-      if (mounted) {
-        setState(() => _clearing = false);
-      }
-    }
-  }
-
-  Future<void> _clearRecentRecords() async {
-    setState(() => _clearing = true);
-    try {
-      await ref.read(recentRecordsProvider.notifier).clear();
     } finally {
       if (mounted) {
         setState(() => _clearing = false);

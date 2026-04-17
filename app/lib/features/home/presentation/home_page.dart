@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../shared/desktop_window_actions.dart';
 import '../../../shared/providers.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -71,7 +72,6 @@ class _HomePageState extends ConsumerState<HomePage> {
   @override
   Widget build(BuildContext context) {
     final dataset = ref.watch(datasetSnapshotProvider);
-    final recentRecords = ref.watch(recentRecordsProvider);
     final isDesktop = Platform.isMacOS || Platform.isWindows;
 
     Widget importer = _ImportCard(
@@ -101,6 +101,11 @@ class _HomePageState extends ConsumerState<HomePage> {
       appBar: AppBar(
         title: const Text('Egg Analyze v2'),
         actions: [
+          ...buildDesktopWindowActions(
+            context,
+            ref,
+            currentRoute: '/',
+          ),
           IconButton(
             tooltip: '设置',
             onPressed: () => context.push('/settings'),
@@ -130,38 +135,6 @@ class _HomePageState extends ConsumerState<HomePage> {
                     ],
                   ),
                   error: (error, _) => Text('数据加载失败：$error'),
-                  loading: () => const SizedBox(
-                    height: 64,
-                    child: Center(child: CircularProgressIndicator.adaptive()),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: recentRecords.when(
-                  data: (items) {
-                    if (items.isEmpty) {
-                      return const Text('最近记录为空');
-                    }
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('最近记录',
-                            style: TextStyle(fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 12),
-                        for (final item in items)
-                          ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(item.label),
-                            subtitle: Text(item.createdAt.toLocal().toString()),
-                          ),
-                      ],
-                    );
-                  },
-                  error: (error, _) => Text('读取最近记录失败：$error'),
                   loading: () => const SizedBox(
                     height: 64,
                     child: Center(child: CircularProgressIndicator.adaptive()),

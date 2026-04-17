@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../shared/providers.dart';
 import '../shared/share_intent_bootstrapper.dart';
 import 'router.dart';
 import 'theme.dart';
@@ -13,10 +14,21 @@ class EggAnalyzeV2App extends ConsumerStatefulWidget {
 }
 
 class _EggAnalyzeV2AppState extends ConsumerState<EggAnalyzeV2App> {
+  bool _desktopBootstrapped = false;
+
   @override
   void initState() {
     super.initState();
     Future.microtask(() => ref.read(shareIntentBootstrapperProvider).start());
+    Future.microtask(() async {
+      final controller = ref.read(desktopWindowControllerProvider);
+      await controller.initialize();
+      if (!_desktopBootstrapped && controller.isDesktop) {
+        _desktopBootstrapped = true;
+        await controller.enterBubbleMode();
+        ref.read(appRouterProvider).go('/bubble');
+      }
+    });
   }
 
   @override
@@ -25,6 +37,7 @@ class _EggAnalyzeV2AppState extends ConsumerState<EggAnalyzeV2App> {
     return MaterialApp.router(
       title: 'Egg Analyze v2',
       theme: buildAppTheme(),
+      debugShowCheckedModeBanner: false,
       routerConfig: router,
     );
   }
