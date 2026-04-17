@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:screen_retriever/screen_retriever.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -99,12 +100,14 @@ class DesktopWindowController with WindowListener {
     await windowManager.setBackgroundColor(Colors.white);
     await windowManager.setMinimumSize(_minimumFullSize);
     await windowManager.setMaximumSize(const Size(-1, -1));
-    if (_lastFullBounds != null) {
-      await windowManager.setBounds(_lastFullBounds!);
-    } else {
-      await windowManager.setSize(_defaultFullSize);
-      await windowManager.center();
-    }
+    final targetSize = _lastFullBounds?.size ?? _defaultFullSize;
+    final targetBounds = _lastFullBounds != null
+        ? _clampRectToVisibleArea(
+            await _currentDisplayVisibleRect(_lastFullBounds!),
+            _lastFullBounds!,
+          )
+        : await _deriveBoundsNearBubble(targetSize);
+    await windowManager.setBounds(targetBounds);
     await windowManager.focus();
   }
 
@@ -165,6 +168,65 @@ class DesktopWindowController with WindowListener {
     await prefs.setDouble(_bubbleYKey, position.dy);
   }
 
+  Future<Rect> _deriveBoundsNearBubble(Size targetSize) async {
+    final bubbleBounds = await windowManager.getBounds();
+    final displays = await screenRetriever.getAllDisplays();
+    final primaryDisplay = await screenRetriever.getPrimaryDisplay();
+    final bubbleCenter = Offset(
+      bubbleBounds.left + (bubbleBounds.width / 2),
+      bubbleBounds.top + (bubbleBounds.height / 2),
+    );
+
+    final currentDisplay = displays.firstWhere(
+      (display) => _displayVisibleRect(display).contains(bubbleCenter),
+      orElse: () => primaryDisplay,
+    );
+
+    final visibleRect = _displayVisibleRect(currentDisplay);
+    final preferredLeft = bubbleBounds.right - targetSize.width;
+    final preferredTop = bubbleBounds.top - 16;
+
+    final left =
+        preferredLeft.clamp(visibleRect.left, visibleRect.right - targetSize.width);
+    final top =
+        preferredTop.clamp(visibleRect.top, visibleRect.bottom - targetSize.height);
+
+    return Rect.fromLTWH(left, top, targetSize.width, targetSize.height);
+  }
+
+  Future<Rect> _currentDisplayVisibleRect(Rect anchor) async {
+    final displays = await screenRetriever.getAllDisplays();
+    final primaryDisplay = await screenRetriever.getPrimaryDisplay();
+    final center = Offset(
+      anchor.left + (anchor.width / 2),
+      anchor.top + (anchor.height / 2),
+    );
+    final display = displays.firstWhere(
+      (item) => _displayVisibleRect(item).contains(center),
+      orElse: () => primaryDisplay,
+    );
+    return _displayVisibleRect(display);
+  }
+
+  Rect _displayVisibleRect(Display display) {
+    final visiblePosition = display.visiblePosition ?? Offset.zero;
+    final visibleSize = display.visibleSize ?? display.size;
+    return Rect.fromLTWH(
+      visiblePosition.dx,
+      visiblePosition.dy,
+      visibleSize.width,
+      visibleSize.height,
+    );
+  }
+
+  Rect _clampRectToVisibleArea(Rect visibleRect, Rect rect) {
+    final width = rect.width.clamp(0.0, visibleRect.width);
+    final height = rect.height.clamp(0.0, visibleRect.height);
+    final left = rect.left.clamp(visibleRect.left, visibleRect.right - width);
+    final top = rect.top.clamp(visibleRect.top, visibleRect.bottom - height);
+    return Rect.fromLTWH(left, top, width, height);
+  }
+
   Future<void> _animateOpacity({
     required double from,
     required double to,
@@ -179,7 +241,9 @@ class DesktopWindowController with WindowListener {
       await windowManager.setOpacity(value);
       if (i < steps) {
         await Future<void>.delayed(
-          Duration(milliseconds: (_transitionDuration.inMilliseconds / steps).round()),
+          Duration(
+            milliseconds: (_transitionDuration.inMilliseconds / steps).round(),
+          ),
         );
       }
     }

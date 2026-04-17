@@ -78,6 +78,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     Widget importer = _ImportCard(
       busy: _busy,
       dragging: _dragging,
+      showScreenshotAction: isDesktop,
       onOpenImage: () => _pickImage(ImageSource.gallery),
       onTakePhoto:
           Platform.isAndroid ? () => _pickImage(ImageSource.camera) : null,
@@ -156,12 +157,14 @@ class _ImportCard extends StatelessWidget {
   const _ImportCard({
     required this.busy,
     required this.dragging,
+    required this.showScreenshotAction,
     required this.onOpenImage,
     this.onTakePhoto,
   });
 
   final bool busy;
   final bool dragging;
+  final bool showScreenshotAction;
   final VoidCallback onOpenImage;
   final VoidCallback? onTakePhoto;
 
@@ -188,6 +191,12 @@ class _ImportCard extends StatelessWidget {
                   icon: const Icon(Icons.photo_library_outlined),
                   label: Text(busy ? '分析中...' : '打开图片'),
                 ),
+                if (showScreenshotAction)
+                  OutlinedButton.icon(
+                    onPressed: null,
+                    icon: const Icon(Icons.screenshot_monitor_outlined),
+                    label: const Text('截屏分析'),
+                  ),
                 if (onTakePhoto != null)
                   OutlinedButton.icon(
                     onPressed: busy ? null : onTakePhoto,

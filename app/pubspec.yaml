@@ -19,6 +19,7 @@ dependencies:
   file_selector: ^1.0.3
   image_picker: ^1.1.2
   share_handler: ^0.0.25
+  screen_retriever: ^0.2.0
   window_manager: ^0.4.3
   egg_core:
     path: ../packages/egg_core

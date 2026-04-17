@@ -40,7 +40,10 @@ class ResultPage extends ConsumerWidget {
       body: LayoutBuilder(
         builder: (context, constraints) {
           final wide = constraints.maxWidth >= 720;
-          final preview = _SourcePreviewCard(result: result);
+          final preview = _SourcePreviewCard(
+            result: result,
+            fillHeight: wide,
+          );
           final results = _ResultPanel(result: result);
 
           if (!wide) {
@@ -104,9 +107,13 @@ class _HomeBackButton extends StatelessWidget {
 }
 
 class _SourcePreviewCard extends StatelessWidget {
-  const _SourcePreviewCard({required this.result});
+  const _SourcePreviewCard({
+    required this.result,
+    required this.fillHeight,
+  });
 
   final AnalysisResult result;
+  final bool fillHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -115,6 +122,7 @@ class _SourcePreviewCard extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: fillHeight ? MainAxisSize.max : MainAxisSize.min,
           children: [
             const Text('图片预览', style: TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
@@ -122,22 +130,35 @@ class _SourcePreviewCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text('分析时间：${result.analyzedAt.toLocal()}'),
             const SizedBox(height: 16),
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  width: double.infinity,
-                  color: const Color(0xFFF4F6FA),
-                  alignment: Alignment.center,
-                  child: Image.memory(
-                    result.sourceBytes,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                  ),
-                ),
-              ),
-            ),
+            if (fillHeight)
+              Expanded(child: _PreviewImage(result: result))
+            else
+              _PreviewImage(result: result),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PreviewImage extends StatelessWidget {
+  const _PreviewImage({required this.result});
+
+  final AnalysisResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(minHeight: 240, maxHeight: 360),
+        color: const Color(0xFFF4F6FA),
+        alignment: Alignment.center,
+        child: Image.memory(
+          result.sourceBytes,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
         ),
       ),
     );
@@ -237,29 +258,94 @@ class _MeasurementCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-            for (final candidate in entry.candidates) ...[
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: PortraitImage(
-                  portraitKey: candidate.portraitKey,
-                  label: candidate.petName,
-                ),
-                title: Text('${candidate.petName} (#${candidate.petId})'),
-                subtitle: Text(
-                  '概率 ${candidate.probability.toStringAsFixed(2)}% | '
-                  '身高 ${candidate.heightRangeLabel} | '
-                  '体重 ${candidate.weightRangeLabel}\n'
-                  '${candidate.matchLabel}'
-                  '${candidate.hatchLabel == null ? '' : ' | 孵化 ${candidate.hatchLabel}'}',
-                ),
+            for (final indexed in entry.candidates.indexed) ...[
+              _CandidateTile(
+                candidate: indexed.$2,
+                highlighted: indexed.$1 == 0,
               ),
-              const Divider(height: 1),
+              const SizedBox(height: 10),
             ],
             if (entry.candidates.isEmpty)
               const Padding(
                 padding: EdgeInsets.only(top: 8),
                 child: Text('没有命中候选，通常说明 OCR 提取到了数值，但未落入公开区间。'),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CandidateTile extends StatelessWidget {
+  const _CandidateTile({
+    required this.candidate,
+    required this.highlighted,
+  });
+
+  final Candidate candidate;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor =
+        highlighted ? const Color(0xFF4F6DDC) : const Color(0xFFD8DEEC);
+    final backgroundColor =
+        highlighted ? const Color(0xFFEAF0FF) : Colors.white;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: borderColor,
+          width: highlighted ? 2 : 1,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (highlighted) ...[
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4F6DDC),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Text(
+                  '最高匹配',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: PortraitImage(
+                portraitKey: candidate.portraitKey,
+                label: candidate.petName,
+              ),
+              title: Text(
+                '${candidate.petName} (#${candidate.petId})',
+                style: TextStyle(
+                  fontWeight: highlighted ? FontWeight.w800 : FontWeight.w600,
+                ),
+              ),
+              subtitle: Text(
+                '概率 ${candidate.probability.toStringAsFixed(2)}% | '
+                '身高 ${candidate.heightRangeLabel} | '
+                '体重 ${candidate.weightRangeLabel}\n'
+                '${candidate.matchLabel}'
+                '${candidate.hatchLabel == null ? '' : ' | 孵化 ${candidate.hatchLabel}'}',
+              ),
+            ),
           ],
         ),
       ),
