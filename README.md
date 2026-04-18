@@ -1,46 +1,110 @@
-# egg-analyze-v2
+# Egg Analyze V2
 
-Flutter 纯栈版 v2 骨架，目标平台为 `macOS / Windows / Android`。
+Egg Analyze V2 是一个面向《洛克王国》孵蛋场景的跨平台识别工具，帮助用户通过截图或导入图片，快速识别蛋的身高、体重，并给出可能的精灵候选与匹配概率。
 
-## 结构
+## 产品定位
 
-```text
-egg-analyze-v2/
-  app/
-  packages/
-    egg_core/
-    egg_ocr/
-    egg_data/
-```
+- 面向需要频繁做孵蛋识别的玩家
+- 提供桌面优先的轻量化识别体验
+- 支持本地 OCR 与本地数据匹配，不依赖在线识别服务
 
-## 本地启动
+## 支持平台
 
-当前目录已经补齐 `android / macos / windows` 宿主工程。
+- macOS
+- Windows
+- Android
 
-首次拉取后，在 `app/` 目录执行：
+当前发布流水线会产出：
 
-```bash
-flutter create . --platforms=android,macos,windows
-flutter pub get
-```
+- Android：`apk`
+- Windows：`exe` 安装包
+- macOS：`dmg`
 
-如果需要同步本地包依赖，再分别执行：
+## 核心能力
 
-```bash
-cd packages/egg_core && flutter pub get
-cd ../egg_ocr && flutter pub get
-cd ../egg_data && flutter pub get
-```
+### 1. 图片导入分析
 
-## 实现范围
+- 支持本地图片导入
+- 桌面端支持拖拽图片到首页直接分析
+- Android 支持相册/拍照链路扩展
 
-- `egg_core`：匹配引擎、OCR 数值提取、概率计算
-- `egg_ocr`：桌面 `platform_ocr` + Android `google_mlkit_text_recognition`
-- `egg_data`：`Pets.json`、头像资源缓存
-- `app`：首页、结果页、设置页三页骨架
+### 2. 区域截屏分析
 
-## 当前限制
+- 桌面端支持通过“截屏分析”入口进行区域截图
+- 截图完成后自动进入分析流程
+- 截图前会隐藏主窗口，避免遮挡目标区域
 
-- 未接入桌面截图、悬浮球、全局热键
-- Android 分享入口只补了 Manifest 与 Dart 监听，仍需真机联调
-- 还没有接入现有 `picture/` 真实样本图的自动回归夹具
+### 3. OCR 识别
+
+- macOS / Windows：使用平台原生 OCR 能力
+- Android：使用 ML Kit 文本识别
+- 内置数值纠错、局部重试和补救提取逻辑，提升孵蛋数字场景下的识别稳定性
+
+### 4. 孵蛋候选匹配
+
+- 基于 `Pets.json` 本地数据进行区间匹配
+- 对识别出的每个蛋输出候选精灵列表
+- 默认按概率从高到低排序
+- 每个蛋的最高匹配结果会做显著高亮
+- 同名候选只保留一条，后续候选自动补位
+
+### 5. 小圆点悬浮入口
+
+- 桌面端默认以小圆点方式启动
+- 支持拖拽移动并记住位置
+- 点击后可展开主界面
+- 小圆点和主窗口图标统一使用产品图标资源
+
+## 产品结构
+
+### 首页
+
+- 打开图片
+- 截屏分析
+- 数据状态
+- 设置入口
+
+### 结果页
+
+- 左侧展示原始截图
+- 右侧展示识别结果与候选精灵
+- 支持滚动浏览多个蛋的识别结果
+
+### 设置页
+
+- OCR 引擎说明
+- 数据刷新
+- 图片缓存清理
+- OCR 基准测试入口
+
+### OCR 基准测试
+
+- 使用内置样本图批量跑 OCR 与匹配流程
+- 用于验证不同平台下的识别效果
+- 当前已支持 Android 实机/模拟器跑基准
+
+## 技术实现概览
+
+- `app/`
+  - Flutter 应用壳、页面与平台入口
+- `packages/egg_core`
+  - 数值提取、匹配引擎、候选排序
+- `packages/egg_ocr`
+  - 平台 OCR 适配层
+- `packages/egg_data`
+  - 数据与图片缓存
+- `packages/platform_ocr`
+  - 本地托管的桌面 OCR 依赖修正版，用于保证多平台构建稳定
+
+## 当前已知边界
+
+- Android OCR 已可运行，但与桌面端相比仍有一定误差差异
+- Android 基准测试通过率已显著提升，但仍在持续优化
+- Android 目前不支持桌面同等的系统级截屏方案
+- 发布流水线已支持三端产物上传到 GitHub Release，但正式分发前仍建议补充签名与 notarization
+
+## 适合的使用方式
+
+- 桌面端：小圆点常驻，随时截图分析
+- 手机端：导入截图做快速识别
+- 开发与验收：通过基准测试跟踪 OCR 质量变化
