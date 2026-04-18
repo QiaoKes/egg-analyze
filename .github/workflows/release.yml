@@ -2,20 +2,40 @@ name: Release Builds
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - develop
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: Resolve Version
+    runs-on: ubuntu-latest
+    outputs:
+      app_version: ${{ steps.version.outputs.app_version }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version from pubspec
+        id: version
+        run: |
+          RAW_VERSION=$(grep '^version:' app/pubspec.yaml | awk '{print $2}')
+          APP_VERSION="${RAW_VERSION%%+*}"
+          RELEASE_TAG="v${APP_VERSION}"
+          echo "app_version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+
   build-android:
     name: Build Android APK
+    needs: prepare
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -46,16 +66,17 @@ jobs:
       - name: Rename Android artifact
         run: |
           cp build/app/outputs/flutter-apk/app-release.apk \
-            egg-analyze-v2-${{ github.ref_name }}-android.apk
+            egg-analyze-v2-${{ needs.prepare.outputs.release_tag }}-android.apk
 
       - name: Upload Android artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: app/egg-analyze-v2-${{ github.ref_name }}-android.apk
+          path: app/egg-analyze-v2-${{ needs.prepare.outputs.release_tag }}-android.apk
 
   build-windows:
     name: Build Windows Installer
+    needs: prepare
     runs-on: windows-latest
     defaults:
       run:
@@ -84,7 +105,8 @@ jobs:
       - name: Build Windows installer
         shell: pwsh
         run: |
-          $version = "${{ github.ref_name }}".TrimStart("v")
+          $version = "${{ needs.prepare.outputs.app_version }}"
+          $tag = "${{ needs.prepare.outputs.release_tag }}"
           $output = (Resolve-Path ".").Path
           $appDir = Join-Path $output "build\windows\x64\runner\Release"
           $script = Join-Path $output "..\.github\installers\windows.iss"
@@ -92,17 +114,18 @@ jobs:
             "/DAppVersion=$version" `
             "/DAppSourceDir=$appDir" `
             "/DOutputDir=$output" `
-            "/DOutputBaseFilename=egg-analyze-v2-${{ github.ref_name }}-windows-setup" `
+            "/DOutputBaseFilename=egg-analyze-v2-$tag-windows-setup" `
             $script
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer
-          path: app/egg-analyze-v2-${{ github.ref_name }}-windows-setup.exe
+          path: app/egg-analyze-v2-${{ needs.prepare.outputs.release_tag }}-windows-setup.exe
 
   build-macos:
     name: Build macOS DMG
+    needs: prepare
     runs-on: macos-latest
     defaults:
       run:
@@ -126,11 +149,11 @@ jobs:
 
       - name: Create macOS DMG
         run: |
-          VERSION="${{ github.ref_name }}"
+          TAG="${{ needs.prepare.outputs.release_tag }}"
           APP_NAME="egg_analyze_v2.app"
           APP_DIR="build/macos/Build/Products/Release"
           STAGING="build/macos/dmg-staging"
-          DMG_NAME="egg-analyze-v2-${VERSION}-macos.dmg"
+          DMG_NAME="egg-analyze-v2-${TAG}-macos.dmg"
 
           rm -rf "$STAGING"
           mkdir -p "$STAGING"
@@ -148,11 +171,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos-dmg
-          path: app/egg-analyze-v2-${{ github.ref_name }}-macos.dmg
+          path: app/egg-analyze-v2-${{ needs.prepare.outputs.release_tag }}-macos.dmg
 
   publish-release:
     name: Publish GitHub Release
     needs:
+      - prepare
       - build-android
       - build-windows
       - build-macos
@@ -179,8 +203,11 @@ jobs:
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.prepare.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ needs.prepare.outputs.release_tag }}
           files: |
-            dist/egg-analyze-v2-${{ github.ref_name }}-android.apk
-            dist/egg-analyze-v2-${{ github.ref_name }}-windows-setup.exe
-            dist/egg-analyze-v2-${{ github.ref_name }}-macos.dmg
+            dist/egg-analyze-v2-${{ needs.prepare.outputs.release_tag }}-android.apk
+            dist/egg-analyze-v2-${{ needs.prepare.outputs.release_tag }}-windows-setup.exe
+            dist/egg-analyze-v2-${{ needs.prepare.outputs.release_tag }}-macos.dmg
           generate_release_notes: true
