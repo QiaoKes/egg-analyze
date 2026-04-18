@@ -1,0 +1,186 @@
+name: Release Builds
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.6'
+          channel: stable
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build Android APK
+        run: flutter build apk --release
+
+      - name: Rename Android artifact
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            egg-analyze-v2-${{ github.ref_name }}-android.apk
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: app/egg-analyze-v2-${{ github.ref_name }}-android.apk
+
+  build-windows:
+    name: Build Windows Installer
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.6'
+          channel: stable
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build Windows
+        run: flutter build windows --release
+
+      - name: Set up Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          $output = (Resolve-Path ".").Path
+          $appDir = Join-Path $output "build\windows\x64\runner\Release"
+          $script = Join-Path $output "..\.github\installers\windows.iss"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            "/DAppVersion=$version" `
+            "/DAppSourceDir=$appDir" `
+            "/DOutputDir=$output" `
+            "/DOutputBaseFilename=egg-analyze-v2-${{ github.ref_name }}-windows-setup" `
+            $script
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: app/egg-analyze-v2-${{ github.ref_name }}-windows-setup.exe
+
+  build-macos:
+    name: Build macOS DMG
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.6'
+          channel: stable
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build macOS
+        run: flutter build macos --release
+
+      - name: Create macOS DMG
+        run: |
+          VERSION="${{ github.ref_name }}"
+          APP_NAME="egg_analyze_v2.app"
+          APP_DIR="build/macos/Build/Products/Release"
+          STAGING="build/macos/dmg-staging"
+          DMG_NAME="egg-analyze-v2-${VERSION}-macos.dmg"
+
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING"
+          cp -R "$APP_DIR/$APP_NAME" "$STAGING/"
+          ln -s /Applications "$STAGING/Applications"
+
+          hdiutil create \
+            -volname "Egg Analyze V2" \
+            -srcfolder "$STAGING" \
+            -ov \
+            -format UDZO \
+            "$DMG_NAME"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: app/egg-analyze-v2-${{ github.ref_name }}-macos.dmg
+
+  publish-release:
+    name: Publish GitHub Release
+    needs:
+      - build-android
+      - build-windows
+      - build-macos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: dist
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: dist
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-dmg
+          path: dist
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/egg-analyze-v2-${{ github.ref_name }}-android.apk
+            dist/egg-analyze-v2-${{ github.ref_name }}-windows-setup.exe
+            dist/egg-analyze-v2-${{ github.ref_name }}-macos.dmg
+          generate_release_notes: true

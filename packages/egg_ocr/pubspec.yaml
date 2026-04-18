@@ -1,0 +1,24 @@
+name: egg_ocr
+description: OCR adapter package for egg-analyze-v2.
+publish_to: 'none'
+version: 0.1.0-dev.1
+
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+  flutter: '>=3.24.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  egg_core:
+    path: ../egg_core
+  image: ^4.5.4
+  path_provider: ^2.1.5
+  google_mlkit_text_recognition: ^0.15.1
+  platform_ocr:
+    path: ../platform_ocr
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0

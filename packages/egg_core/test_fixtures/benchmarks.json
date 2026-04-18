@@ -1,0 +1,199 @@
+[
+  {
+    "id": "main/triple_stack",
+    "group": "main",
+    "image": "assets/benchmarks/孵蛋页面1.png",
+    "measurements": [
+      {"size": 0.2, "weight": 11.052},
+      {"size": 0.17, "weight": 2.775},
+      {"size": 0.23, "weight": 2.75}
+    ]
+  },
+  {
+    "id": "main/double_stack",
+    "group": "main",
+    "image": "assets/benchmarks/孵蛋页面2.png",
+    "measurements": [
+      {"size": 0.17, "weight": 2.775},
+      {"size": 0.23, "weight": 2.75}
+    ]
+  },
+  {
+    "id": "main/single_stack",
+    "group": "main",
+    "image": "assets/benchmarks/孵蛋页面3.png",
+    "measurements": [
+      {"size": 0.17, "weight": 2.775}
+    ]
+  },
+  {
+    "id": "main/triple_mixed_real",
+    "group": "main",
+    "image": "assets/benchmarks/孵蛋页面_三蛋加速混合_真实截图.png",
+    "measurements": [
+      {"size": 0.23, "weight": 2.75},
+      {"size": 0.21, "weight": 0.309},
+      {"size": 0.33, "weight": 11.573}
+    ]
+  },
+  {
+    "id": "main/triple_same_mid_missing_line",
+    "group": "main",
+    "image": "assets/benchmarks/孵蛋页面_三蛋同蛋_中间漏检样本.png",
+    "scales": [0.75, 1.0, 1.25, 1.5],
+    "measurements": [
+      {"size": 0.42, "weight": 12.969},
+      {"size": 0.22, "weight": 0.744},
+      {"size": 0.42, "weight": 13.161}
+    ]
+  },
+  {
+    "id": "main/triple_mixed_sample",
+    "group": "main",
+    "image": "assets/benchmarks/孵蛋页面_三蛋混合样本.png",
+    "measurements": [
+      {"size": 0.23, "weight": 2.75},
+      {"size": 0.21, "weight": 0.309},
+      {"size": 0.33, "weight": 11.573}
+    ]
+  },
+  {
+    "id": "main/single_low_res",
+    "group": "main",
+    "image": "assets/benchmarks/孵蛋页面_单蛋加速91_低分辨率.png",
+    "measurements": [
+      {"size": 0.23, "weight": 2.75}
+    ]
+  },
+  {
+    "id": "main/double_high_res",
+    "group": "main",
+    "image": "assets/benchmarks/孵蛋页面_双蛋一空_高分辨率.png",
+    "measurements": [
+      {"size": 0.17, "weight": 2.775},
+      {"size": 0.23, "weight": 2.75}
+    ]
+  },
+  {
+    "id": "main/detail_default",
+    "group": "main",
+    "image": "assets/benchmarks/蛋详细页面.png",
+    "measurements": [
+      {"size": 0.22, "weight": 6.181}
+    ]
+  },
+  {
+    "id": "main/detail_low_weight",
+    "group": "main",
+    "image": "assets/benchmarks/蛋详细页面_神奇的蛋_低重量.png",
+    "measurements": [
+      {"size": 0.21, "weight": 0.309}
+    ]
+  },
+  {
+    "id": "main/detail_fenxingzai",
+    "group": "main",
+    "image": "assets/benchmarks/蛋详细页面_粉星仔蛋.png",
+    "measurements": [
+      {"size": 0.21, "weight": 5.04}
+    ]
+  },
+  {
+    "id": "main/detail_doudingyu",
+    "group": "main",
+    "image": "assets/benchmarks/蛋详细页面_豆丁鱼蛋.png",
+    "measurements": [
+      {"size": 0.17, "weight": 0.558}
+    ]
+  },
+  {
+    "id": "synthetic/incubator_low/common",
+    "group": "synthetic",
+    "template": "incubator_low",
+    "image": "assets/benchmarks/synthetic/incubator_low_common.png",
+    "measurements": [
+      {"size": 0.17, "weight": 2.775}
+    ]
+  },
+  {
+    "id": "synthetic/incubator_low/boost",
+    "group": "synthetic",
+    "template": "incubator_low",
+    "image": "assets/benchmarks/synthetic/incubator_low_boost.png",
+    "measurements": [
+      {"size": 0.23, "weight": 2.75}
+    ]
+  },
+  {
+    "id": "synthetic/incubator_low/var1",
+    "group": "synthetic",
+    "template": "incubator_low",
+    "image": "assets/benchmarks/synthetic/incubator_low_var1.png",
+    "measurements": [
+      {"size": 0.19, "weight": 2.715}
+    ]
+  },
+  {
+    "id": "synthetic/incubator_low/var2",
+    "group": "synthetic",
+    "template": "incubator_low",
+    "image": "assets/benchmarks/synthetic/incubator_low_var2.png",
+    "measurements": [
+      {"size": 0.21, "weight": 2.795}
+    ]
+  },
+  {
+    "id": "synthetic/detail_dark/low_weight",
+    "group": "synthetic",
+    "template": "detail_dark",
+    "image": "assets/benchmarks/synthetic/detail_dark_low_weight.png",
+    "measurements": [
+      {"size": 0.21, "weight": 0.309}
+    ]
+  },
+  {
+    "id": "synthetic/detail_dark/fish",
+    "group": "synthetic",
+    "template": "detail_dark",
+    "image": "assets/benchmarks/synthetic/detail_dark_fish.png",
+    "measurements": [
+      {"size": 0.17, "weight": 0.558}
+    ]
+  },
+  {
+    "id": "synthetic/detail_dark/common",
+    "group": "synthetic",
+    "template": "detail_dark",
+    "image": "assets/benchmarks/synthetic/detail_dark_common.png",
+    "measurements": [
+      {"size": 0.17, "weight": 2.775}
+    ]
+  },
+  {
+    "id": "synthetic/detail_dark/boost",
+    "group": "synthetic",
+    "template": "detail_dark",
+    "image": "assets/benchmarks/synthetic/detail_dark_boost.png",
+    "measurements": [
+      {"size": 0.23, "weight": 2.75}
+    ]
+  },
+  {
+    "id": "synthetic/detail_dark/detail",
+    "group": "synthetic",
+    "template": "detail_dark",
+    "image": "assets/benchmarks/synthetic/detail_dark_detail.png",
+    "measurements": [
+      {"size": 0.22, "weight": 6.181}
+    ]
+  },
+  {
+    "id": "synthetic/detail_dark/heavy",
+    "group": "synthetic",
+    "template": "detail_dark",
+    "image": "assets/benchmarks/synthetic/detail_dark_heavy.png",
+    "measurements": [
+      {"size": 0.33, "weight": 11.573}
+    ]
+  }
+]

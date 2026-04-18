@@ -1,0 +1,72 @@
+[
+  {
+    "image": "/Users/saki/Desktop/code/egg-analyze/picture/synthetic/incubator_low_common.png",
+    "template": "incubator_low",
+    "case": "common",
+    "size": 0.17,
+    "weight": 2.775
+  },
+  {
+    "image": "/Users/saki/Desktop/code/egg-analyze/picture/synthetic/incubator_low_boost.png",
+    "template": "incubator_low",
+    "case": "boost",
+    "size": 0.23,
+    "weight": 2.75
+  },
+  {
+    "image": "/Users/saki/Desktop/code/egg-analyze/picture/synthetic/incubator_low_var1.png",
+    "template": "incubator_low",
+    "case": "var1",
+    "size": 0.19,
+    "weight": 2.715
+  },
+  {
+    "image": "/Users/saki/Desktop/code/egg-analyze/picture/synthetic/incubator_low_var2.png",
+    "template": "incubator_low",
+    "case": "var2",
+    "size": 0.21,
+    "weight": 2.795
+  },
+  {
+    "image": "/Users/saki/Desktop/code/egg-analyze/picture/synthetic/detail_dark_low_weight.png",
+    "template": "detail_dark",
+    "case": "low_weight",
+    "size": 0.21,
+    "weight": 0.309
+  },
+  {
+    "image": "/Users/saki/Desktop/code/egg-analyze/picture/synthetic/detail_dark_fish.png",
+    "template": "detail_dark",
+    "case": "fish",
+    "size": 0.17,
+    "weight": 0.558
+  },
+  {
+    "image": "/Users/saki/Desktop/code/egg-analyze/picture/synthetic/detail_dark_common.png",
+    "template": "detail_dark",
+    "case": "common",
+    "size": 0.17,
+    "weight": 2.775
+  },
+  {
+    "image": "/Users/saki/Desktop/code/egg-analyze/picture/synthetic/detail_dark_boost.png",
+    "template": "detail_dark",
+    "case": "boost",
+    "size": 0.23,
+    "weight": 2.75
+  },
+  {
+    "image": "/Users/saki/Desktop/code/egg-analyze/picture/synthetic/detail_dark_detail.png",
+    "template": "detail_dark",
+    "case": "detail",
+    "size": 0.22,
+    "weight": 6.181
+  },
+  {
+    "image": "/Users/saki/Desktop/code/egg-analyze/picture/synthetic/detail_dark_heavy.png",
+    "template": "detail_dark",
+    "case": "heavy",
+    "size": 0.33,
+    "weight": 11.573
+  }
+]
