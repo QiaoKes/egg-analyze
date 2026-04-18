@@ -13,6 +13,7 @@ class DesktopWindowController with WindowListener {
   static const Size _defaultFullSize = Size(920, 640);
   static const Size _minimumFullSize = Size(760, 560);
   static const Duration _transitionDuration = Duration(milliseconds: 120);
+  static const Color _fullWindowBackground = Color(0xFFF6F8FC);
 
   bool _initialized = false;
   bool _bubbleMode = false;
@@ -88,17 +89,26 @@ class DesktopWindowController with WindowListener {
       return;
     }
     _bubbleMode = false;
-    await windowManager.setHasShadow(true);
     await windowManager.setAlwaysOnTop(true);
     await windowManager.setSkipTaskbar(false);
-    await windowManager.setResizable(true);
-    await windowManager.setMinimizable(true);
-    await windowManager.setMaximizable(true);
-    await windowManager.setTitleBarStyle(
-      TitleBarStyle.normal,
-      windowButtonVisibility: true,
-    );
-    await windowManager.setBackgroundColor(Colors.white);
+    if (Platform.isWindows) {
+      await windowManager.setAsFrameless();
+      await windowManager.setHasShadow(true);
+      await windowManager.setResizable(true);
+      await windowManager.setMinimizable(true);
+      await windowManager.setMaximizable(true);
+      await windowManager.setBackgroundColor(_fullWindowBackground);
+    } else {
+      await windowManager.setHasShadow(true);
+      await windowManager.setResizable(true);
+      await windowManager.setMinimizable(true);
+      await windowManager.setMaximizable(true);
+      await windowManager.setTitleBarStyle(
+        TitleBarStyle.normal,
+        windowButtonVisibility: true,
+      );
+      await windowManager.setBackgroundColor(Colors.white);
+    }
     await windowManager.setMinimumSize(_minimumFullSize);
     await windowManager.setMaximumSize(const Size(-1, -1));
     final targetSize = _lastFullBounds?.size ?? _defaultFullSize;
@@ -187,10 +197,10 @@ class DesktopWindowController with WindowListener {
     final preferredLeft = bubbleBounds.right - targetSize.width;
     final preferredTop = bubbleBounds.top - 16;
 
-    final left =
-        preferredLeft.clamp(visibleRect.left, visibleRect.right - targetSize.width);
-    final top =
-        preferredTop.clamp(visibleRect.top, visibleRect.bottom - targetSize.height);
+    final left = preferredLeft.clamp(
+        visibleRect.left, visibleRect.right - targetSize.width);
+    final top = preferredTop.clamp(
+        visibleRect.top, visibleRect.bottom - targetSize.height);
 
     return Rect.fromLTWH(left, top, targetSize.width, targetSize.height);
   }

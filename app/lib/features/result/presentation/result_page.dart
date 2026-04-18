@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:egg_core/egg_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../shared/desktop_page_header.dart';
 import '../../../shared/portrait_image.dart';
 import '../../../shared/providers.dart';
 
@@ -12,8 +15,16 @@ class ResultPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final result = ref.watch(currentAnalysisResultProvider);
-    final showAppBar = MediaQuery.sizeOf(context).width >= 320;
+    final useDesktopFrame = Platform.isWindows;
+    final showAppBar =
+        !useDesktopFrame && MediaQuery.sizeOf(context).width >= 320;
     if (result == null) {
+      final emptyState = Center(
+        child: FilledButton(
+          onPressed: () => context.go('/'),
+          child: const Text('先返回首页导入图片'),
+        ),
+      );
       return Scaffold(
         appBar: showAppBar
             ? AppBar(
@@ -21,14 +32,68 @@ class ResultPage extends ConsumerWidget {
                 title: const Text('分析结果'),
               )
             : null,
-        body: Center(
-          child: FilledButton(
-            onPressed: () => context.go('/'),
-            child: const Text('先返回首页导入图片'),
-          ),
-        ),
+        body: useDesktopFrame
+            ? DesktopPageFrame(
+                title: '分析结果',
+                leading: const _HomeBackButton(),
+                child: emptyState,
+              )
+            : emptyState,
       );
     }
+
+    final content = LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 700;
+        final preview = _SourcePreviewCard(
+          result: result,
+          fillHeight: wide,
+        );
+        final results = _ResultPanel(result: result);
+
+        if (!wide) {
+          return ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              preview,
+              const SizedBox(height: 20),
+              SizedBox(
+                height: 560,
+                child: results,
+              ),
+            ],
+          );
+        }
+
+        final contentHeight = constraints.maxHeight - 40;
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: SizedBox(
+            height: contentHeight,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: SizedBox(
+                    height: contentHeight,
+                    child: preview,
+                  ),
+                ),
+                const SizedBox(width: 20),
+                Expanded(
+                  flex: 6,
+                  child: SizedBox(
+                    height: contentHeight,
+                    child: results,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
 
     return Scaffold(
       appBar: showAppBar
@@ -37,58 +102,13 @@ class ResultPage extends ConsumerWidget {
               title: const Text('分析结果'),
             )
           : null,
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final wide = constraints.maxWidth >= 720;
-          final preview = _SourcePreviewCard(
-            result: result,
-            fillHeight: wide,
-          );
-          final results = _ResultPanel(result: result);
-
-          if (!wide) {
-            return ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                preview,
-                const SizedBox(height: 20),
-                SizedBox(
-                  height: 560,
-                  child: results,
-                ),
-              ],
-            );
-          }
-
-          final contentHeight = constraints.maxHeight - 40;
-          return Padding(
-            padding: const EdgeInsets.all(20),
-            child: SizedBox(
-              height: contentHeight,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 5,
-                    child: SizedBox(
-                      height: contentHeight,
-                      child: preview,
-                    ),
-                  ),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    flex: 6,
-                    child: SizedBox(
-                      height: contentHeight,
-                      child: results,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
+      body: useDesktopFrame
+          ? DesktopPageFrame(
+              title: '分析结果',
+              leading: const _HomeBackButton(),
+              child: content,
+            )
+          : content,
     );
   }
 }

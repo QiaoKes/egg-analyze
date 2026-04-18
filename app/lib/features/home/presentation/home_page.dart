@@ -11,6 +11,7 @@ import 'package:screen_capturer/screen_capturer.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../../shared/desktop_window_actions.dart';
+import '../../../shared/desktop_page_header.dart';
 import '../../../shared/providers.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -143,7 +144,9 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget build(BuildContext context) {
     final dataset = ref.watch(datasetSnapshotProvider);
     final isDesktop = Platform.isMacOS || Platform.isWindows;
-    final showAppBar = MediaQuery.sizeOf(context).width >= 320;
+    final useDesktopFrame = Platform.isWindows;
+    final showAppBar =
+        !useDesktopFrame && MediaQuery.sizeOf(context).width >= 320;
 
     Widget importer = _ImportCard(
       busy: _busy,
@@ -170,6 +173,39 @@ class _HomePageState extends ConsumerState<HomePage> {
       );
     }
 
+    final body = SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          importer,
+          const SizedBox(height: 20),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: dataset.when(
+                data: (snapshot) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('数据状态',
+                        style: TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    Text(snapshot.fromCache ? '来源：本地缓存' : '来源：远程拉取'),
+                    Text('更新时间：${snapshot.updatedAt.toLocal()}'),
+                    Text('精灵数量：${snapshot.dataset.pets.length}'),
+                  ],
+                ),
+                error: (error, _) => Text('数据加载失败：$error'),
+                loading: () => const SizedBox(
+                  height: 64,
+                  child: Center(child: CircularProgressIndicator.adaptive()),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
     return Scaffold(
       appBar: showAppBar
           ? AppBar(
@@ -188,38 +224,24 @@ class _HomePageState extends ConsumerState<HomePage> {
               ],
             )
           : null,
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            importer,
-            const SizedBox(height: 20),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: dataset.when(
-                  data: (snapshot) => Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('数据状态',
-                          style: TextStyle(fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 8),
-                      Text(snapshot.fromCache ? '来源：本地缓存' : '来源：远程拉取'),
-                      Text('更新时间：${snapshot.updatedAt.toLocal()}'),
-                      Text('精灵数量：${snapshot.dataset.pets.length}'),
-                    ],
-                  ),
-                  error: (error, _) => Text('数据加载失败：$error'),
-                  loading: () => const SizedBox(
-                    height: 64,
-                    child: Center(child: CircularProgressIndicator.adaptive()),
-                  ),
+      body: useDesktopFrame
+          ? DesktopPageFrame(
+              title: 'Egg Analyze v2',
+              actions: [
+                ...buildDesktopWindowActions(
+                  context,
+                  ref,
+                  currentRoute: '/',
                 ),
-              ),
-            ),
-          ],
-        ),
-      ),
+                IconButton(
+                  tooltip: '设置',
+                  onPressed: () => context.push('/settings'),
+                  icon: const Icon(Icons.settings_outlined),
+                ),
+              ],
+              child: body,
+            )
+          : body,
     );
   }
 }
