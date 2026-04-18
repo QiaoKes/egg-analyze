@@ -29,7 +29,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // Desktop boots into bubble mode, so create the native window with the
   // same initial size to avoid a large hidden surface on startup.
   Win32Window::Size size(60, 60);
-  if (!window.Create(L"Egg Analyze V2", origin, size)) {
+  if (!window.Create(L"洛克王国精灵蛋分析", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

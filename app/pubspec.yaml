@@ -28,6 +28,7 @@ dependencies:
     path: ../packages/egg_ocr
   egg_data:
     path: ../packages/egg_data
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

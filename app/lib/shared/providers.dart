@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:dio/dio.dart';
 import 'package:egg_core/egg_core.dart';
@@ -70,6 +71,38 @@ class AnalysisController {
           bytes,
           sourceLabel: label,
         );
+    ref.read(currentAnalysisResultProvider.notifier).state = result;
+    return result;
+  }
+
+  Future<AnalysisResult> analyzeManualMeasurement({
+    required double heightInMeters,
+    required double weightInKg,
+  }) async {
+    final snapshot = await ref.read(datasetRepositoryProvider).load();
+    final engine = MatchingEngine(snapshot.dataset);
+    final measurement = Measurement(
+      heightInMeters: heightInMeters,
+      weightInKg: weightInKg,
+      anchorText: '手动输入',
+      anchor: Offset.zero,
+      rawLines: const [],
+    );
+    final result = AnalysisResult(
+      entries: [
+        AnalysisEntry(
+          measurement: measurement,
+          candidates: engine.search(
+            heightInCentimeters: heightInMeters * 100,
+            weightInKg: weightInKg,
+          ),
+        ),
+      ],
+      ocrDocument: const OcrDocument(lines: []),
+      sourceBytes: Uint8List(0),
+      sourceLabel: '手动输入',
+      analyzedAt: DateTime.now(),
+    );
     ref.read(currentAnalysisResultProvider.notifier).state = result;
     return result;
   }

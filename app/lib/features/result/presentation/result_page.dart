@@ -44,12 +44,36 @@ class ResultPage extends ConsumerWidget {
 
     final content = LayoutBuilder(
       builder: (context, constraints) {
+        final hasPreview = result.sourceBytes.isNotEmpty;
         final wide = constraints.maxWidth >= 700;
+        final results = _ResultPanel(result: result);
         final preview = _SourcePreviewCard(
           result: result,
           fillHeight: wide,
         );
-        final results = _ResultPanel(result: result);
+
+        if (!hasPreview) {
+          if (!wide) {
+            return ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                SizedBox(
+                  height: 560,
+                  child: results,
+                ),
+              ],
+            );
+          }
+
+          final contentHeight = constraints.maxHeight - 40;
+          return Padding(
+            padding: const EdgeInsets.all(20),
+            child: SizedBox(
+              height: contentHeight,
+              child: results,
+            ),
+          );
+        }
 
         if (!wide) {
           return ListView(
@@ -168,6 +192,33 @@ class _PreviewImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (result.sourceBytes.isEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(minHeight: 240, maxHeight: 360),
+          color: const Color(0xFFF4F6FA),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.all(24),
+          child: const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.edit_note_rounded,
+                size: 40,
+                color: Color(0xFF4F6DDC),
+              ),
+              SizedBox(height: 12),
+              Text(
+                '这是一次手动输入分析，没有原图预览。',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: Container(
@@ -225,7 +276,7 @@ class _ResultPanelState extends State<_ResultPanel> {
               if (widget.result.entries.isEmpty)
                 const Padding(
                   padding: EdgeInsets.only(bottom: 8),
-                  child: Text('未提取到有效的身高/体重。'),
+                  child: Text('未提取到有效的蛋尺寸/蛋重量。'),
                 ),
               for (var i = 0; i < widget.result.entries.length; i++) ...[
                 _MeasurementCard(index: i + 1, entry: widget.result.entries[i]),
@@ -266,12 +317,12 @@ class _MeasurementCard extends StatelessWidget {
               runSpacing: 8,
               children: [
                 _MetricChip(
-                  label: '身高',
+                  label: '蛋尺寸',
                   value:
                       '${entry.measurement.heightInMeters.toStringAsFixed(3)} m',
                 ),
                 _MetricChip(
-                  label: '体重',
+                  label: '蛋重量',
                   value:
                       '${entry.measurement.weightInKg.toStringAsFixed(3)} kg',
                 ),
@@ -360,8 +411,8 @@ class _CandidateTile extends StatelessWidget {
               ),
               subtitle: Text(
                 '概率 ${candidate.probability.toStringAsFixed(2)}% | '
-                '身高 ${candidate.heightRangeLabel} | '
-                '体重 ${candidate.weightRangeLabel}\n'
+                '蛋尺寸 ${candidate.heightRangeLabel} | '
+                '蛋重量 ${candidate.weightRangeLabel}\n'
                 '${candidate.matchLabel}'
                 '${candidate.hatchLabel == null ? '' : ' | 孵化 ${candidate.hatchLabel}'}',
               ),

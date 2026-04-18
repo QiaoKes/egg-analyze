@@ -20,8 +20,18 @@ class DesktopPageFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final resizeEdges = Platform.isWindows
+        ? const [
+            ResizeEdge.left,
+            ResizeEdge.right,
+            ResizeEdge.bottomLeft,
+            ResizeEdge.bottom,
+            ResizeEdge.bottomRight,
+          ]
+        : null;
     return DragToResizeArea(
       resizeEdgeSize: 6,
+      enableResizeEdges: resizeEdges,
       child: ColoredBox(
         color: theme.scaffoldBackgroundColor,
         child: Column(

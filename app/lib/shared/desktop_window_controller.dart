@@ -17,6 +17,7 @@ class DesktopWindowController with WindowListener {
 
   bool _initialized = false;
   bool _bubbleMode = false;
+  bool _refreshingAfterResize = false;
   String _lastFullRoute = '/';
   Rect? _lastFullBounds;
 
@@ -80,7 +81,9 @@ class DesktopWindowController with WindowListener {
     await windowManager.setMinimumSize(_bubbleSize);
     await windowManager.setMaximumSize(_bubbleSize);
     await windowManager.setSize(_bubbleSize);
-    await _restoreBubblePositionOrDefault();
+    final bubblePosition = await _deriveBubblePositionNearFullWindow();
+    await windowManager.setPosition(bubblePosition);
+    await _persistBubblePosition();
     await windowManager.focus();
   }
 
@@ -112,12 +115,7 @@ class DesktopWindowController with WindowListener {
     await windowManager.setMinimumSize(_minimumFullSize);
     await windowManager.setMaximumSize(const Size(-1, -1));
     final targetSize = _lastFullBounds?.size ?? _defaultFullSize;
-    final targetBounds = _lastFullBounds != null
-        ? _clampRectToVisibleArea(
-            await _currentDisplayVisibleRect(_lastFullBounds!),
-            _lastFullBounds!,
-          )
-        : await _deriveBoundsNearBubble(targetSize);
+    final targetBounds = await _deriveBoundsNearBubble(targetSize);
     await windowManager.setBounds(targetBounds);
     await windowManager.focus();
   }
@@ -127,10 +125,19 @@ class DesktopWindowController with WindowListener {
       await routeChange();
       return;
     }
+    final hideDuringTransition = Platform.isWindows;
     await _animateOpacity(from: 1, to: 0);
+    if (hideDuringTransition) {
+      await windowManager.hide();
+    }
     await routeChange();
-    await Future<void>.delayed(const Duration(milliseconds: 16));
+    await Future<void>.delayed(const Duration(milliseconds: 32));
     await enterBubbleMode();
+    await Future<void>.delayed(const Duration(milliseconds: 32));
+    if (hideDuringTransition) {
+      await windowManager.show();
+      await windowManager.focus();
+    }
     await _animateOpacity(from: 0, to: 1);
   }
 
@@ -139,10 +146,18 @@ class DesktopWindowController with WindowListener {
       await routeChange();
       return;
     }
+    final hideDuringTransition = Platform.isWindows;
     await _animateOpacity(from: 1, to: 0);
+    if (hideDuringTransition) {
+      await windowManager.hide();
+    }
     await exitBubbleMode();
     await routeChange();
-    await Future<void>.delayed(const Duration(milliseconds: 16));
+    await Future<void>.delayed(const Duration(milliseconds: 32));
+    if (hideDuringTransition) {
+      await windowManager.show();
+      await windowManager.focus();
+    }
     await _animateOpacity(from: 0, to: 1);
   }
 
@@ -152,6 +167,14 @@ class DesktopWindowController with WindowListener {
       return;
     }
     unawaited(_persistBubblePosition());
+  }
+
+  @override
+  void onWindowResized() {
+    if (!Platform.isWindows || _bubbleMode || _refreshingAfterResize) {
+      return;
+    }
+    unawaited(_refreshWindowAfterResize());
   }
 
   Future<void> disposeController() async {
@@ -177,6 +200,22 @@ class DesktopWindowController with WindowListener {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_bubbleXKey, position.dx);
     await prefs.setDouble(_bubbleYKey, position.dy);
+  }
+
+  Future<Offset> _deriveBubblePositionNearFullWindow() async {
+    final anchor = _lastFullBounds ?? await windowManager.getBounds();
+    final visibleRect = await _currentDisplayVisibleRect(anchor);
+    final preferredLeft = anchor.right - _bubbleSize.width - 8;
+    final preferredTop = anchor.top + 8;
+    final left = preferredLeft.clamp(
+      visibleRect.left,
+      visibleRect.right - _bubbleSize.width,
+    );
+    final top = preferredTop.clamp(
+      visibleRect.top,
+      visibleRect.bottom - _bubbleSize.height,
+    );
+    return Offset(left, top);
   }
 
   Future<Rect> _deriveBoundsNearBubble(Size targetSize) async {
@@ -230,12 +269,15 @@ class DesktopWindowController with WindowListener {
     );
   }
 
-  Rect _clampRectToVisibleArea(Rect visibleRect, Rect rect) {
-    final width = rect.width.clamp(0.0, visibleRect.width);
-    final height = rect.height.clamp(0.0, visibleRect.height);
-    final left = rect.left.clamp(visibleRect.left, visibleRect.right - width);
-    final top = rect.top.clamp(visibleRect.top, visibleRect.bottom - height);
-    return Rect.fromLTWH(left, top, width, height);
+  Future<void> _refreshWindowAfterResize() async {
+    _refreshingAfterResize = true;
+    try {
+      final size = await windowManager.getSize();
+      await windowManager.setSize(size + const Offset(1, 0));
+      await windowManager.setSize(size);
+    } finally {
+      _refreshingAfterResize = false;
+    }
   }
 
   Future<void> _animateOpacity({

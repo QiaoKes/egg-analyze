@@ -34,7 +34,7 @@ class _EggAnalyzeV2AppState extends ConsumerState<EggAnalyzeV2App> {
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
     return MaterialApp.router(
-      title: 'Egg Analyze v2',
+      title: '洛克王国精灵蛋分析',
       theme: buildAppTheme(),
       debugShowCheckedModeBanner: false,
       routerConfig: router,

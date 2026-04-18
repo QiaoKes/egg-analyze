@@ -16,12 +16,14 @@ class PortraitImage extends ConsumerWidget {
     super.key,
     required this.portraitKey,
     required this.label,
-    this.size = 88,
+    this.size = 96,
   });
 
   final String portraitKey;
   final String label;
   final double size;
+
+  double get _portraitHeight => size * 1.18;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -30,14 +32,26 @@ class PortraitImage extends ConsumerWidget {
       borderRadius: BorderRadius.circular(18),
       child: Container(
         width: size,
-        height: size,
+        height: _portraitHeight,
         color: const Color(0xFFE8EEF9),
         child: image.when(
           data: (bytes) {
             if (bytes == null) {
               return _Fallback(label: label);
             }
-            return Image.memory(bytes, fit: BoxFit.cover);
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                size * 0.04,
+                size * 0.05,
+                size * 0.04,
+                size * 0.02,
+              ),
+              child: Image.memory(
+                bytes,
+                fit: BoxFit.contain,
+                alignment: Alignment.bottomCenter,
+              ),
+            );
           },
           error: (_, __) => _Fallback(label: label),
           loading: () =>
