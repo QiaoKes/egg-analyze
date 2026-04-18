@@ -61,6 +61,9 @@ final analysisControllerProvider = Provider<AnalysisController>((ref) {
 class AnalysisController {
   const AnalysisController(this.ref);
 
+  static const _portraitPrefetchLimit = 6;
+  static const _portraitPrefetchBatchSize = 2;
+
   final Ref ref;
 
   Future<AnalysisResult> analyzeBytes(
@@ -71,6 +74,7 @@ class AnalysisController {
           bytes,
           sourceLabel: label,
         );
+    await _preloadVisiblePortraits(result);
     ref.read(currentAnalysisResultProvider.notifier).state = result;
     return result;
   }
@@ -103,7 +107,29 @@ class AnalysisController {
       sourceLabel: '手动输入',
       analyzedAt: DateTime.now(),
     );
+    await _preloadVisiblePortraits(result);
     ref.read(currentAnalysisResultProvider.notifier).state = result;
     return result;
+  }
+
+  Future<void> _preloadVisiblePortraits(AnalysisResult result) async {
+    final portraitKeys = result.entries
+        .expand((entry) => entry.candidates.take(2))
+        .map((candidate) => candidate.portraitKey)
+        .where((key) => key.trim().isNotEmpty)
+        .take(_portraitPrefetchLimit)
+        .toList(growable: false);
+    if (portraitKeys.isEmpty) {
+      return;
+    }
+
+    try {
+      await ref.read(portraitRepositoryProvider).preloadPortraits(
+            portraitKeys,
+            batchSize: _portraitPrefetchBatchSize,
+          );
+    } catch (_) {
+      // Portrait warmup is best-effort; analysis should still succeed.
+    }
   }
 }

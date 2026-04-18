@@ -363,6 +363,7 @@ class _CandidateTile extends StatelessWidget {
         highlighted ? const Color(0xFF4F6DDC) : const Color(0xFFD8DEEC);
     final backgroundColor =
         highlighted ? const Color(0xFFEAF0FF) : Colors.white;
+    final portraitSize = MediaQuery.sizeOf(context).width >= 420 ? 108.0 : 92.0;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -397,25 +398,38 @@ class _CandidateTile extends StatelessWidget {
               ),
               const SizedBox(height: 10),
             ],
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: PortraitImage(
-                portraitKey: candidate.portraitKey,
-                label: candidate.petName,
-              ),
-              title: Text(
-                '${candidate.petName} (#${candidate.petId})',
-                style: TextStyle(
-                  fontWeight: highlighted ? FontWeight.w800 : FontWeight.w600,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                PortraitImage(
+                  portraitKey: candidate.portraitKey,
+                  label: candidate.petName,
+                  size: portraitSize,
                 ),
-              ),
-              subtitle: Text(
-                '概率 ${candidate.probability.toStringAsFixed(2)}% | '
-                '蛋尺寸 ${candidate.heightRangeLabel} | '
-                '蛋重量 ${candidate.weightRangeLabel}\n'
-                '${candidate.matchLabel}'
-                '${candidate.hatchLabel == null ? '' : ' | 孵化 ${candidate.hatchLabel}'}',
-              ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${candidate.petName} (#${candidate.petId})',
+                        style: TextStyle(
+                          fontWeight:
+                              highlighted ? FontWeight.w800 : FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '概率 ${candidate.probability.toStringAsFixed(2)}% | '
+                        '蛋尺寸 ${candidate.heightRangeLabel} | '
+                        '蛋重量 ${candidate.weightRangeLabel}\n'
+                        '${candidate.matchLabel}'
+                        '${candidate.hatchLabel == null ? '' : ' | 孵化 ${candidate.hatchLabel}'}',
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),
