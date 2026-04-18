@@ -576,10 +576,9 @@ packages:
   platform_ocr:
     dependency: transitive
     description:
-      name: platform_ocr
-      sha256: a50c7ac0d8667b3d2a1a3900f1b221b966d9602539ddc2351565d3de43e881e3
-      url: "https://pub.dev"
-    source: hosted
+      path: "../packages/platform_ocr"
+      relative: true
+    source: path
     version: "1.0.0"
   plugin_platform_interface:
     dependency: transitive

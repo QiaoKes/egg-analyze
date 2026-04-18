@@ -141,11 +141,25 @@ class MeasurementExtractor {
 
   _ParsedNumber? _parseNumber(String input) {
     final normalized = _normalizeNumericText(input);
-    final match = RegExp(r'(?:\d+\.\d+|\.\d+|\d+)').firstMatch(normalized);
-    if (match == null) {
+    final candidates = <String>{};
+    for (final match in RegExp(r'(?:\d+\.\d+|\.\d+|\d+)').allMatches(normalized)) {
+      candidates.add(match.group(0)!);
+    }
+    for (final match in RegExp(r'0\.\d+').allMatches(normalized)) {
+      candidates.add(match.group(0)!);
+    }
+    if (candidates.isEmpty) {
       return null;
     }
-    var valueText = match.group(0)!;
+
+    var valueText = candidates.first;
+    final prefersEmbeddedDecimal = candidates.any((item) => item.startsWith('0.')) &&
+        candidates.any((item) => (double.tryParse(item) ?? 0) > 10);
+    if (prefersEmbeddedDecimal) {
+      valueText = candidates
+          .where((item) => item.startsWith('0.'))
+          .reduce((left, right) => left.length >= right.length ? left : right);
+    }
     if (valueText.startsWith('.')) {
       valueText = '0$valueText';
     }
@@ -396,6 +410,11 @@ class MeasurementExtractor {
       for (final item in existing)
         '${item.anchor.dx.round()}:${item.anchor.dy.round()}',
     };
+    final consumedWeightLines = <String>{
+      for (final item in existing)
+        if (item.weightBounds != null)
+          '${item.weightBounds!.left.round()}:${item.weightBounds!.top.round()}',
+    };
 
     final sortedLines = [...lines]..sort((left, right) {
         if ((left.y - right.y).abs() <= _rowTolerance(left, right)) {
@@ -408,6 +427,9 @@ class MeasurementExtractor {
     for (final line in sortedLines) {
       final anchorKey = '${line.x}:${line.y}';
       if (matched.contains(anchorKey)) {
+        continue;
+      }
+      if (consumedWeightLines.contains(anchorKey)) {
         continue;
       }
 
