@@ -19,7 +19,7 @@ class BubblePage extends ConsumerWidget {
     Future<void> expand() async {
       await controller.transitionToFull(() {
         if (context.mounted) {
-          context.go(hasResult ? controller.restoreRoute : '/');
+          context.go(hasResult ? '/result' : controller.restoreRoute);
         }
       });
     }

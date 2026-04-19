@@ -146,7 +146,9 @@ class _HomePageState extends ConsumerState<HomePage> {
             ),
           ),
         );
-      } else if (Platform.isMacOS || Platform.isWindows) {
+      } else if (Platform.isWindows) {
+        context.go('/result');
+      } else if (Platform.isMacOS) {
         final controller = ref.read(desktopWindowControllerProvider);
         await controller.transitionToBubble(() {
           if (context.mounted) {
