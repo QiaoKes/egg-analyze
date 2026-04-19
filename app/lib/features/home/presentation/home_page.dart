@@ -114,18 +114,41 @@ class _HomePageState extends ConsumerState<HomePage> {
         return;
       }
 
-      await ref.read(analysisControllerProvider).analyzeBytes(
+      final result = await ref.read(analysisControllerProvider).analyzeBytes(
             captured!.imageBytes!,
             label: '区域截图',
           );
-      if (mounted && (Platform.isMacOS || Platform.isWindows)) {
+      if (!mounted) {
+        return;
+      }
+
+      if (result.entries.isEmpty) {
+        final message = result.ocrDocument.lines.isEmpty
+            ? '没有识别到有效文字，请尽量截全单个蛋的信息区域后重试。'
+            : '没有提取到有效的蛋尺寸/蛋重量，请重新截图或截得更完整一些。';
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(message),
+            action: SnackBarAction(
+              label: '查看详情',
+              onPressed: () {
+                if (context.mounted) {
+                  context.go('/result');
+                }
+              },
+            ),
+          ),
+        );
+      } else if (Platform.isMacOS || Platform.isWindows) {
         final controller = ref.read(desktopWindowControllerProvider);
         await controller.transitionToBubble(() {
           if (context.mounted) {
             context.go('/bubble');
           }
         });
-      } else if (mounted) {
+      } else {
         context.go('/result');
       }
     } catch (error) {

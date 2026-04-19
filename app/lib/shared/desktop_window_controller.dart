@@ -227,7 +227,12 @@ class DesktopWindowController with WindowListener {
     if (!isDesktop) {
       return;
     }
-    await windowManager.destroy();
+    try {
+      await windowManager.hide();
+    } catch (_) {
+      // Best-effort: if the window is already hidden, continue shutdown.
+    }
+    unawaited(windowManager.destroy());
   }
 
   Future<void> _restoreBubblePositionOrDefault() async {
