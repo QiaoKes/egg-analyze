@@ -6,7 +6,7 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 
-class MlKitOcrEngine implements OcrEngine {
+class MlKitOcrEngine implements BatchTextOnlyOcrEngine {
   static const _minimumImageEdge = 32;
 
   MlKitOcrEngine({
@@ -31,6 +31,22 @@ class MlKitOcrEngine implements OcrEngine {
 
     final retried = await _recognizePreparedBytes(upscaledBytes);
     return _scoreDocument(retried) >= _scoreDocument(primary) ? retried : primary;
+  }
+
+  @override
+  Future<OcrDocument> recognizeTextOnly(Uint8List imageBytes) {
+    return _recognizePreparedBytes(_ensureMinimumSize(imageBytes));
+  }
+
+  @override
+  Future<List<OcrDocument>> recognizeTextOnlyBatch(
+    List<Uint8List> imageBytesList,
+  ) async {
+    final results = <OcrDocument>[];
+    for (final imageBytes in imageBytesList) {
+      results.add(await recognizeTextOnly(imageBytes));
+    }
+    return results;
   }
 
   Uint8List _ensureMinimumSize(Uint8List imageBytes) {

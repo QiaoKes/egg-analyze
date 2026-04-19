@@ -27,46 +27,51 @@ class RapidOcrDesktop {
 
   _WorkerState? _worker;
   Future<void> _queue = Future<void>.value();
-  int _requestCounter = 0;
 
   Future<OcrDocument> recognize(Uint8List imageBytes) {
     return _serialize(() async {
       final worker = await _ensureWorker();
       final dimensions = _decodeSize(imageBytes);
-      final inputFile = File(
-        p.join(
-          worker.runtimeRoot.path,
-          'input-${DateTime.now().microsecondsSinceEpoch}-${_requestCounter++}.png',
-        ),
+      final primary = await _sendRecognizeRequest(
+        worker,
+        imageBytes,
+        mode: 'full',
       );
-      await inputFile.writeAsBytes(imageBytes, flush: true);
-
-      try {
-        final primary = await _sendRecognizeRequest(
-          worker,
-          inputFile.path,
-          mode: 'full',
-        );
-        if (!_shouldTryRecognitionOnly(
-          dimensions,
-          primary,
-        )) {
-          return primary;
-        }
-
-        final recognitionOnly = await _sendRecognizeRequest(
-          worker,
-          inputFile.path,
-          mode: 'rec_only',
-        );
-        return _scoreDocument(recognitionOnly) >= _scoreDocument(primary)
-            ? recognitionOnly
-            : primary;
-      } finally {
-        if (await inputFile.exists()) {
-          await inputFile.delete();
-        }
+      if (!_shouldTryRecognitionOnly(
+        dimensions,
+        primary,
+      )) {
+        return primary;
       }
+
+      final recognitionOnly = await _sendRecognizeRequest(
+        worker,
+        imageBytes,
+        mode: 'rec_only',
+      );
+      return _scoreDocument(recognitionOnly) >= _scoreDocument(primary)
+          ? recognitionOnly
+          : primary;
+    });
+  }
+
+  Future<OcrDocument> recognizeTextOnly(Uint8List imageBytes) {
+    return _serialize(() async {
+      final worker = await _ensureWorker();
+      return _sendRecognizeRequest(worker, imageBytes, mode: 'rec_only');
+    });
+  }
+
+  Future<List<OcrDocument>> recognizeTextOnlyBatch(
+    List<Uint8List> imageBytesList,
+  ) {
+    return _serialize(() async {
+      final worker = await _ensureWorker();
+      return _sendRecognizeBatchRequest(
+        worker,
+        imageBytesList,
+        mode: 'rec_only',
+      );
     });
   }
 
@@ -261,12 +266,12 @@ class RapidOcrDesktop {
 
   Future<OcrDocument> _sendRecognizeRequest(
     _WorkerState worker,
-    String imagePath,
+    Uint8List imageBytes,
     {
     required String mode,
   }) async {
     final payload = jsonEncode(<String, Object?>{
-      'path': imagePath,
+      'image_base64': base64Encode(imageBytes),
       'mode': mode,
     });
     worker.stdin.writeln(payload);
@@ -305,6 +310,58 @@ class RapidOcrDesktop {
           .where((line) => line.text.trim().isNotEmpty)
           .toList(growable: false),
     );
+  }
+
+  Future<List<OcrDocument>> _sendRecognizeBatchRequest(
+    _WorkerState worker,
+    List<Uint8List> imageBytesList, {
+    required String mode,
+  }) async {
+    final payload = jsonEncode(<String, Object?>{
+      'images_base64': imageBytesList.map(base64Encode).toList(growable: false),
+      'mode': mode,
+    });
+    worker.stdin.writeln(payload);
+    await worker.stdin.flush();
+
+    if (!await worker.stdout.moveNext()) {
+      final exitCode = await worker.process.exitCode;
+      final stderr = worker.stderrBuffer.toString().trim();
+      _worker = null;
+      throw RapidOcrDesktopException(
+        'RapidOCR worker exited unexpectedly (exit=$exitCode). $stderr',
+      );
+    }
+
+    final response =
+        jsonDecode(worker.stdout.current) as Map<String, dynamic>;
+    if (response['ok'] != true) {
+      final error = (response['error'] as String?)?.trim();
+      final traceback = (response['traceback'] as String?)?.trim();
+      throw RapidOcrDesktopException(
+        [
+          'RapidOCR failed to recognize the image batch.',
+          if (error != null && error.isNotEmpty) error,
+          if (traceback != null && traceback.isNotEmpty) traceback,
+          worker.stderrBuffer.toString().trim(),
+        ].where((item) => item.isNotEmpty).join(' '),
+      );
+    }
+
+    final rawDocuments =
+        (response['documents'] as List<dynamic>? ?? const <dynamic>[]);
+    return rawDocuments
+        .whereType<Map<String, dynamic>>()
+        .map(
+          (document) => OcrDocument(
+            lines: (document['lines'] as List<dynamic>? ?? const <dynamic>[])
+                .whereType<Map<String, dynamic>>()
+                .map(_toOcrLine)
+                .where((line) => line.text.trim().isNotEmpty)
+                .toList(growable: false),
+          ),
+        )
+        .toList(growable: false);
   }
 
   OcrLine _toOcrLine(Map<String, dynamic> json) {
@@ -417,6 +474,7 @@ class _ImageDimensions {
 }
 
 const String _defaultWorkerScript = r'''
+import base64
 import json
 import sys
 import traceback
@@ -434,6 +492,36 @@ def bounds(box):
 
 def emit(payload):
     print(json.dumps(payload), flush=True)
+
+
+def to_lines(result, mode):
+    lines = []
+    if mode == "rec_only":
+        for item in result or []:
+            lines.append(
+                {
+                    "text": item[0],
+                    "left": 0,
+                    "top": 0,
+                    "width": 0,
+                    "height": 0,
+                }
+            )
+        return lines
+
+    for item in result or []:
+        box, text, _score = item
+        left, top, width, height = bounds(box)
+        lines.append(
+            {
+                "text": text,
+                "left": left,
+                "top": top,
+                "width": width,
+                "height": height,
+            }
+        )
+    return lines
 
 
 def main():
@@ -469,40 +557,36 @@ def main():
             continue
         try:
             payload = json.loads(raw)
-            path = payload["path"]
             mode = payload.get("mode", "full")
-            if mode == "rec_only":
-                result, _ = engine(path, use_det=False, use_cls=False, use_rec=True)
-            else:
-                result, _ = engine(path)
+            if "images_base64" in payload:
+                documents = []
+                for encoded in payload["images_base64"]:
+                    image_bytes = base64.b64decode(encoded)
+                    if mode == "rec_only":
+                        result, _ = engine(
+                            image_bytes,
+                            use_det=False,
+                            use_cls=False,
+                            use_rec=True,
+                        )
+                    else:
+                        result, _ = engine(image_bytes)
+                    documents.append({"lines": to_lines(result, mode)})
+                emit({"ok": True, "documents": documents})
+                continue
 
-            lines = []
+            image_bytes = base64.b64decode(payload["image_base64"])
             if mode == "rec_only":
-                for item in result or []:
-                    lines.append(
-                        {
-                            "text": item[0],
-                            "left": 0,
-                            "top": 0,
-                            "width": 0,
-                            "height": 0,
-                        }
-                    )
+                result, _ = engine(
+                    image_bytes,
+                    use_det=False,
+                    use_cls=False,
+                    use_rec=True,
+                )
             else:
-                for item in result or []:
-                    box, text, _score = item
-                    left, top, width, height = bounds(box)
-                    lines.append(
-                        {
-                            "text": text,
-                            "left": left,
-                            "top": top,
-                            "width": width,
-                            "height": height,
-                        }
-                    )
+                result, _ = engine(image_bytes)
 
-            emit({"ok": True, "lines": lines})
+            emit({"ok": True, "lines": to_lines(result, mode)})
         except Exception as exc:
             emit(
                 {

@@ -23,6 +23,12 @@ class OcrBenchmarkRunner {
     final engine = MatchingEngine(dataset.dataset);
     final extractor = const MeasurementExtractor();
     final ocr = ref.read(ocrEngineProvider);
+    final recognizeCrop = ocr is TextOnlyOcrEngine
+        ? ocr.recognizeTextOnly
+        : ocr.recognize;
+    final recognizeCropBatch = ocr is BatchTextOnlyOcrEngine
+        ? ocr.recognizeTextOnlyBatch
+        : null;
 
     final cases = <OcrBenchmarkCaseResult>[];
     for (final item in manifest) {
@@ -33,7 +39,8 @@ class OcrBenchmarkRunner {
         lines: document.lines,
         priors: engine.measurementPriors,
         sourceBytes: bytes,
-        recognizeCrop: ocr.recognize,
+        recognizeCrop: recognizeCrop,
+        recognizeCropBatch: recognizeCropBatch,
       );
 
       final entries = measurements

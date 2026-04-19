@@ -15,12 +15,17 @@ class MeasurementExtractor {
     required MeasurementPriors priors,
     Uint8List? sourceBytes,
     Future<OcrDocument> Function(Uint8List imageBytes)? recognizeCrop,
+    Future<List<OcrDocument>> Function(List<Uint8List> imageBytesList)?
+        recognizeCropBatch,
   }) async {
     final base = extractMeasurements(lines, priors);
     if (sourceBytes == null || recognizeCrop == null) {
       return base;
     }
-    final cachedRecognizeCrop = _memoizeRecognizeCrop(recognizeCrop);
+    final cachedCropRecognizer = _CropRecognizerCache(
+      recognizeSingle: recognizeCrop,
+      recognizeBatch: recognizeCropBatch,
+    );
 
     final decoded = img.decodeImage(sourceBytes);
     if (decoded == null) {
@@ -32,7 +37,8 @@ class MeasurementExtractor {
       lines: lines,
       existing: base,
       priors: priors,
-      recognizeCrop: cachedRecognizeCrop,
+      recognizeCrop: cachedCropRecognizer.recognize,
+      recognizeCropBatch: cachedCropRecognizer.recognizeBatch,
     );
 
     final combined = _dedupeMeasurements([
@@ -43,19 +49,10 @@ class MeasurementExtractor {
       measurements: combined,
       sourceImage: decoded,
       weightRange: priors.weight,
-      recognizeCrop: cachedRecognizeCrop,
+      recognizeCrop: cachedCropRecognizer.recognize,
+      recognizeCropBatch: cachedCropRecognizer.recognizeBatch,
     );
     return _sortMeasurements(refined);
-  }
-
-  Future<OcrDocument> Function(Uint8List imageBytes) _memoizeRecognizeCrop(
-    Future<OcrDocument> Function(Uint8List imageBytes) recognizeCrop,
-  ) {
-    final cache = <String, Future<OcrDocument>>{};
-    return (imageBytes) {
-      final key = base64Encode(imageBytes);
-      return cache.putIfAbsent(key, () => recognizeCrop(imageBytes));
-    };
   }
 
   List<Measurement> extractMeasurements(
@@ -434,6 +431,8 @@ class MeasurementExtractor {
     required List<Measurement> existing,
     required MeasurementPriors priors,
     required Future<OcrDocument> Function(Uint8List imageBytes) recognizeCrop,
+    required Future<List<OcrDocument>> Function(List<Uint8List> imageBytesList)?
+        recognizeCropBatch,
   }) async {
     final matched = <String>{
       for (final item in existing)
@@ -475,6 +474,7 @@ class MeasurementExtractor {
         lines: sortedLines,
         weightRange: priors.weight,
         recognizeCrop: recognizeCrop,
+        recognizeCropBatch: recognizeCropBatch,
       );
       if (weight == null) {
         continue;
@@ -503,6 +503,8 @@ class MeasurementExtractor {
     required img.Image sourceImage,
     required Range weightRange,
     required Future<OcrDocument> Function(Uint8List imageBytes) recognizeCrop,
+    required Future<List<OcrDocument>> Function(List<Uint8List> imageBytesList)?
+        recognizeCropBatch,
   }) async {
     final refined = <Measurement>[];
     for (final item in measurements) {
@@ -522,6 +524,7 @@ class MeasurementExtractor {
         currentWeight: item.weightInKg,
         weightRange: weightRange,
         recognizeCrop: recognizeCrop,
+        recognizeCropBatch: recognizeCropBatch,
       );
       if (refinedWeight == null ||
           (refinedWeight.value - item.weightInKg).abs() > 0.02) {
@@ -550,8 +553,11 @@ class MeasurementExtractor {
     required double currentWeight,
     required Range weightRange,
     required Future<OcrDocument> Function(Uint8List imageBytes) recognizeCrop,
+    required Future<List<OcrDocument>> Function(List<Uint8List> imageBytesList)?
+        recognizeCropBatch,
   }) async {
     final candidates = <String, List<_RescuedWeight>>{};
+    final batchVariants = <_BatchVariant>[];
     for (final padding in const [(16, 6), (16, 10), (20, 10)]) {
       final crop = _cropRect(
         sourceImage,
@@ -565,6 +571,17 @@ class MeasurementExtractor {
       }
 
       final primaryBytes = Uint8List.fromList(img.encodePng(crop));
+      if (recognizeCropBatch != null) {
+        batchVariants.add(
+          _BatchVariant(bytes: primaryBytes),
+        );
+        final grayscale = img.grayscale(crop);
+        batchVariants.add(
+          _BatchVariant(bytes: Uint8List.fromList(img.encodePng(grayscale))),
+        );
+        continue;
+      }
+
       final primaryDocument = await recognizeCrop(primaryBytes);
       final primaryParsed =
           _parseBestRescuedWeight(primaryDocument.lines, weightRange);
@@ -594,6 +611,25 @@ class MeasurementExtractor {
       }
       final key = grayscaleParsed.value.toStringAsFixed(3);
       candidates.putIfAbsent(key, () => <_RescuedWeight>[]).add(grayscaleParsed);
+    }
+
+    if (batchVariants.isNotEmpty && recognizeCropBatch != null) {
+      final documents = await recognizeCropBatch(
+        batchVariants.map((item) => item.bytes).toList(growable: false),
+      );
+      for (var i = 0; i < documents.length; i++) {
+        final parsed =
+            _parseBestRescuedWeight(documents[i].lines, weightRange);
+        if (parsed == null) {
+          continue;
+        }
+        if ((parsed.value - currentWeight).abs() <= 0.001 &&
+            parsed.precisionDigits >= 3) {
+          return parsed;
+        }
+        final key = parsed.value.toStringAsFixed(3);
+        candidates.putIfAbsent(key, () => <_RescuedWeight>[]).add(parsed);
+      }
     }
 
     if (candidates.isEmpty) {
@@ -643,6 +679,8 @@ class MeasurementExtractor {
     required List<OcrLine> lines,
     required Range weightRange,
     required Future<OcrDocument> Function(Uint8List imageBytes) recognizeCrop,
+    required Future<List<OcrDocument>> Function(List<Uint8List> imageBytesList)?
+        recognizeCropBatch,
   }) async {
     final result = await _rescueWeightBelowAnchorDetailed(
       sourceImage: sourceImage,
@@ -650,6 +688,7 @@ class MeasurementExtractor {
       lines: lines,
       weightRange: weightRange,
       recognizeCrop: recognizeCrop,
+      recognizeCropBatch: recognizeCropBatch,
     );
     return result?.value;
   }
@@ -660,9 +699,38 @@ class MeasurementExtractor {
     required List<OcrLine> lines,
     required Range weightRange,
     required Future<OcrDocument> Function(Uint8List imageBytes) recognizeCrop,
+    required Future<List<OcrDocument>> Function(List<Uint8List> imageBytesList)?
+        recognizeCropBatch,
   }) async {
     var bestScore = double.negativeInfinity;
     _RescuedWeight? best;
+
+    if (recognizeCropBatch != null) {
+      final preparedVariants = <Uint8List>[];
+      for (final crop in _buildRescueCrops(sourceImage, anchor, lines)) {
+        for (final prepared in _prepareRescueImages(crop)) {
+          preparedVariants.add(Uint8List.fromList(img.encodePng(prepared)));
+        }
+      }
+      if (preparedVariants.isEmpty) {
+        return null;
+      }
+      final documents = await recognizeCropBatch(preparedVariants);
+      for (final document in documents) {
+        final parsed = _parseBestRescuedWeight(document.lines, weightRange);
+        if (parsed == null) {
+          continue;
+        }
+        if (_isHighConfidenceRescue(parsed)) {
+          return parsed;
+        }
+        if (parsed.score > bestScore) {
+          bestScore = parsed.score;
+          best = parsed;
+        }
+      }
+      return best;
+    }
 
     for (final crop in _buildRescueCrops(sourceImage, anchor, lines)) {
       for (final prepared in _prepareRescueImages(crop)) {
@@ -918,4 +986,67 @@ class _RescuedWeight {
   final double value;
   final double score;
   final int precisionDigits;
+}
+
+class _CropRecognizerCache {
+  _CropRecognizerCache({
+    required Future<OcrDocument> Function(Uint8List imageBytes) recognizeSingle,
+    required Future<List<OcrDocument>> Function(List<Uint8List> imageBytesList)?
+        recognizeBatch,
+  })  : _recognizeSingle = recognizeSingle,
+        _recognizeBatch = recognizeBatch;
+
+  final Future<OcrDocument> Function(Uint8List imageBytes) _recognizeSingle;
+  final Future<List<OcrDocument>> Function(List<Uint8List> imageBytesList)?
+      _recognizeBatch;
+  final Map<String, Future<OcrDocument>> _cache = <String, Future<OcrDocument>>{};
+
+  Future<OcrDocument> recognize(Uint8List imageBytes) {
+    final key = base64Encode(imageBytes);
+    return _cache.putIfAbsent(key, () => _recognizeSingle(imageBytes));
+  }
+
+  Future<List<OcrDocument>> Function(List<Uint8List>)? get recognizeBatch =>
+      _recognizeBatch == null ? null : _recognizeMany;
+
+  Future<List<OcrDocument>> _recognizeMany(List<Uint8List> imageBytesList) async {
+    final futures = List<Future<OcrDocument>>.filled(
+      imageBytesList.length,
+      Future<OcrDocument>.value(const OcrDocument(lines: [])),
+      growable: false,
+    );
+    final missingKeys = <String>[];
+    final missingImages = <Uint8List>[];
+    final missingIndexes = <int>[];
+
+    for (var index = 0; index < imageBytesList.length; index++) {
+      final imageBytes = imageBytesList[index];
+      final key = base64Encode(imageBytes);
+      final existing = _cache[key];
+      if (existing != null) {
+        futures[index] = existing;
+        continue;
+      }
+      missingKeys.add(key);
+      missingImages.add(imageBytes);
+      missingIndexes.add(index);
+    }
+
+    if (missingImages.isNotEmpty) {
+      final batchFuture = _recognizeBatch!(missingImages);
+      for (var i = 0; i < missingImages.length; i++) {
+        final itemFuture = batchFuture.then((documents) => documents[i]);
+        _cache[missingKeys[i]] = itemFuture;
+        futures[missingIndexes[i]] = itemFuture;
+      }
+    }
+
+    return Future.wait(futures);
+  }
+}
+
+class _BatchVariant {
+  const _BatchVariant({required this.bytes});
+
+  final Uint8List bytes;
 }

@@ -5,7 +5,7 @@ import 'dart:ui' as ui;
 import 'package:egg_core/egg_core.dart';
 import 'package:platform_ocr/platform_ocr.dart' as platform_ocr;
 
-class PlatformOcrEngine implements OcrEngine {
+class PlatformOcrEngine implements BatchTextOnlyOcrEngine {
   PlatformOcrEngine({platform_ocr.PlatformOcr? platformOcr})
       : _platformOcr = platformOcr ?? platform_ocr.PlatformOcr();
 
@@ -29,6 +29,22 @@ class PlatformOcrEngine implements OcrEngine {
         )
         .toList(growable: false);
     return OcrDocument(lines: lines);
+  }
+
+  @override
+  Future<OcrDocument> recognizeTextOnly(Uint8List imageBytes) {
+    return recognize(imageBytes);
+  }
+
+  @override
+  Future<List<OcrDocument>> recognizeTextOnlyBatch(
+    List<Uint8List> imageBytesList,
+  ) async {
+    final results = <OcrDocument>[];
+    for (final imageBytes in imageBytesList) {
+      results.add(await recognizeTextOnly(imageBytes));
+    }
+    return results;
   }
 
   Future<ui.Size> _decodeImageSize(Uint8List imageBytes) {
