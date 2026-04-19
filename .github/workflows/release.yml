@@ -92,11 +92,27 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements-ocr.txt
+
       - name: Flutter pub get
         run: flutter pub get
 
       - name: Build Windows
         run: flutter build windows --release
+
+      - name: Bundle OCR Python runtime
+        shell: pwsh
+        run: |
+          python ..\scripts\bundle_python_runtime.py `
+            "$env:pythonLocation" `
+            "build\windows\x64\runner\Release\python" `
+            --requirements "..\requirements-ocr.txt" `
+            --clear
 
       - name: Set up Inno Setup
         shell: pwsh
@@ -141,11 +157,26 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements-ocr.txt
+
       - name: Flutter pub get
         run: flutter pub get
 
       - name: Build macOS
         run: flutter build macos --release
+
+      - name: Bundle OCR Python runtime
+        run: |
+          python3 ../scripts/bundle_python_runtime.py \
+            "$pythonLocation" \
+            "build/macos/Build/Products/Release/egg_analyze_v2.app/Contents/Resources/python" \
+            --requirements "../requirements-ocr.txt" \
+            --clear
 
       - name: Create macOS DMG
         run: |

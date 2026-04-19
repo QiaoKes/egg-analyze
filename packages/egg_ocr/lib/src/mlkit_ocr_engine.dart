@@ -173,4 +173,8 @@ class MlKitOcrEngine implements OcrEngine {
     final value = String.fromCharCode(rune);
     return RegExp(r'[0-9.]').hasMatch(value);
   }
+
+  Future<void> dispose() {
+    return _recognizer.close();
+  }
 }

@@ -70,4 +70,8 @@ class PlatformOcrEngine implements OcrEngine {
       rect.height * imageSize.height,
     );
   }
+
+  void dispose() {
+    _platformOcr.dispose();
+  }
 }

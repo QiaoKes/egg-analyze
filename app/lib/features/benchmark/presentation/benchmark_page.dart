@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:egg_ocr/egg_ocr.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -55,6 +56,8 @@ class _BenchmarkPageState extends ConsumerState<BenchmarkPage> {
                     style: TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 8),
                 const Text('会用内置样本图真实调用当前平台 OCR，再跑数值提取和候选匹配，统计命中情况。'),
+                const SizedBox(height: 8),
+                Text('当前引擎：${currentOcrEngineLabel()}'),
                 const SizedBox(height: 12),
                 FilledButton.icon(
                   onPressed: _running ? null : _run,

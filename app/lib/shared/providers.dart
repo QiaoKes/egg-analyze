@@ -10,7 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'desktop_window_controller.dart';
 
-const appVersion = '0.1.0-dev.1';
+const appVersion = '0.1.5';
 
 final dioProvider = Provider<Dio>((ref) => Dio());
 
@@ -23,7 +23,11 @@ final portraitRepositoryProvider = Provider<CachedPortraitRepository>((ref) {
 });
 
 final ocrEngineProvider = Provider<OcrEngine>((ref) {
-  return DefaultOcrEngine.create();
+  final engine = DefaultOcrEngine.create();
+  ref.onDispose(() {
+    DefaultOcrEngine.dispose(engine);
+  });
+  return engine;
 });
 
 final analysisServiceProvider = Provider<AnalysisService>((ref) {

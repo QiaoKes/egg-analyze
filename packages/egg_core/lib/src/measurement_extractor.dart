@@ -214,11 +214,16 @@ class MeasurementExtractor {
         return '2'.codeUnitAt(0);
       case 'S':
       case 's':
+      case 'E':
+      case 'e':
       case 'c':
       case 'C':
       case 'г':
       case 'Г':
         return '5'.codeUnitAt(0);
+      case 'B':
+      case 'b':
+        return '3'.codeUnitAt(0);
       default:
         return null;
     }

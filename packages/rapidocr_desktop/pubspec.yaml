@@ -1,5 +1,5 @@
-name: egg_ocr
-description: OCR adapter package for egg-analyze-v2.
+name: rapidocr_desktop
+description: Desktop RapidOCR worker integration for egg-analyze-v2.
 publish_to: 'none'
 version: 0.1.0-dev.1
 
@@ -13,12 +13,8 @@ dependencies:
   egg_core:
     path: ../egg_core
   image: ^4.5.4
+  path: ^1.9.1
   path_provider: ^2.1.5
-  google_mlkit_text_recognition: ^0.15.1
-  platform_ocr:
-    path: ../platform_ocr
-  rapidocr_desktop:
-    path: ../rapidocr_desktop
 
 dev_dependencies:
   flutter_test:
