@@ -4,7 +4,7 @@ String currentOcrEngineLabel() {
   return switch (defaultTargetPlatform) {
     TargetPlatform.macOS => 'RapidOCR (Python worker + onnxruntime)',
     TargetPlatform.windows => 'RapidOCR (Python worker + onnxruntime)',
-    TargetPlatform.android => 'google_mlkit_text_recognition',
+    TargetPlatform.android => 'RapidOCR (Android ONNX)',
     _ => 'unsupported',
   };
 }

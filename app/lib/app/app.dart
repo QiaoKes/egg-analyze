@@ -23,7 +23,9 @@ class _EggAnalyzeV2AppState extends ConsumerState<EggAnalyzeV2App> {
     Future.microtask(() async {
       final controller = ref.read(desktopWindowControllerProvider);
       await controller.initialize();
-      if (!_desktopBootstrapped && controller.isDesktop && controller.isBubbleMode) {
+      if (!_desktopBootstrapped &&
+          controller.isDesktop &&
+          controller.isBubbleMode) {
         _desktopBootstrapped = true;
         ref.read(appRouterProvider).go('/bubble');
       }

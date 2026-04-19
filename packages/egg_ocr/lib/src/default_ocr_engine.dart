@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:egg_core/egg_core.dart';
 
-import 'mlkit_ocr_engine.dart';
 import 'platform_ocr_engine.dart';
+import 'rapidocr_android_engine.dart';
 import 'rapidocr_desktop_engine.dart';
 
 class DefaultOcrEngine {
@@ -12,7 +12,7 @@ class DefaultOcrEngine {
       return RapidOcrDesktopEngine();
     }
     if (Platform.isAndroid) {
-      return MlKitOcrEngine();
+      return RapidOcrAndroidEngine();
     }
     throw UnsupportedError('Unsupported OCR platform');
   }
@@ -22,7 +22,7 @@ class DefaultOcrEngine {
       await engine.dispose();
       return;
     }
-    if (engine is MlKitOcrEngine) {
+    if (engine is RapidOcrAndroidEngine) {
       await engine.dispose();
       return;
     }

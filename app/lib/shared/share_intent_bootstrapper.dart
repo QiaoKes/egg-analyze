@@ -53,12 +53,18 @@ class ShareIntentBootstrapper {
       return;
     }
 
-    final bytes = await file.readAsBytes();
-    await ref.read(analysisControllerProvider).analyzeBytes(
-          bytes,
-          label: first.path.split('/').last,
-        );
-    ref.read(appRouterProvider).go('/result');
+    try {
+      final bytes = await file.readAsBytes();
+      await ref.read(analysisControllerProvider).analyzeBytes(
+            bytes,
+            label: first.path.split('/').last,
+          );
+      ref.read(appRouterProvider).go('/result');
+    } catch (_) {
+      // Android share sources may point at external or provider-backed files
+      // that are not directly readable via dart:io. Ignore and wait for a
+      // follow-up path handling fix instead of requesting broad media perms.
+    }
   }
 
   void dispose() {
