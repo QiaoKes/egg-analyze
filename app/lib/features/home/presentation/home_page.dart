@@ -193,6 +193,13 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
+  Future<void> _exitDesktopApplication() async {
+    if (!Platform.isMacOS && !Platform.isWindows) {
+      return;
+    }
+    await ref.read(desktopWindowControllerProvider).exitApplication();
+  }
+
   @override
   Widget build(BuildContext context) {
     final dataset = ref.watch(datasetSnapshotProvider);
@@ -200,6 +207,24 @@ class _HomePageState extends ConsumerState<HomePage> {
     final useDesktopFrame = Platform.isWindows;
     final showAppBar =
         !useDesktopFrame && MediaQuery.sizeOf(context).width >= 320;
+    final headerActions = <Widget>[
+      ...buildDesktopWindowActions(
+        context,
+        ref,
+        currentRoute: '/',
+      ),
+      if (isDesktop)
+        IconButton(
+          tooltip: '退出程序',
+          onPressed: _exitDesktopApplication,
+          icon: const Icon(Icons.power_settings_new_rounded),
+        ),
+      IconButton(
+        tooltip: '设置',
+        onPressed: () => context.push('/settings'),
+        icon: const Icon(Icons.settings_outlined),
+      ),
+    ];
 
     Widget importer = _ImportCard(
       busy: _busy,
@@ -301,36 +326,14 @@ class _HomePageState extends ConsumerState<HomePage> {
       appBar: showAppBar
           ? AppBar(
               title: const Text('洛克王国精灵蛋分析'),
-              actions: [
-                ...buildDesktopWindowActions(
-                  context,
-                  ref,
-                  currentRoute: '/',
-                ),
-                IconButton(
-                  tooltip: '设置',
-                  onPressed: () => context.push('/settings'),
-                  icon: const Icon(Icons.settings_outlined),
-                ),
-              ],
+              actions: headerActions,
             )
           : null,
       body: useDesktopFrame
           ? DesktopPageFrame(
               title: '洛克王国精灵蛋分析',
               currentRoute: '/',
-              actions: [
-                ...buildDesktopWindowActions(
-                  context,
-                  ref,
-                  currentRoute: '/',
-                ),
-                IconButton(
-                  tooltip: '设置',
-                  onPressed: () => context.push('/settings'),
-                  icon: const Icon(Icons.settings_outlined),
-                ),
-              ],
+              actions: headerActions,
               child: body,
             )
           : body,

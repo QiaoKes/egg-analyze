@@ -155,19 +155,24 @@ class DesktopWindowController with WindowListener {
       await routeChange();
       return;
     }
-    final hideDuringTransition = Platform.isWindows;
-    await _animateOpacity(from: 1, to: 0);
-    if (hideDuringTransition) {
+    if (Platform.isWindows) {
+      await windowManager.setOpacity(0);
       await windowManager.hide();
+      await routeChange();
+      await Future<void>.delayed(const Duration(milliseconds: 24));
+      await enterBubbleMode();
+      await Future<void>.delayed(const Duration(milliseconds: 24));
+      await windowManager.setOpacity(1);
+      await windowManager.show();
+      await windowManager.focus();
+      return;
     }
+
+    await _animateOpacity(from: 1, to: 0);
     await routeChange();
     await Future<void>.delayed(const Duration(milliseconds: 32));
     await enterBubbleMode();
     await Future<void>.delayed(const Duration(milliseconds: 32));
-    if (hideDuringTransition) {
-      await windowManager.show();
-      await windowManager.focus();
-    }
     await _animateOpacity(from: 0, to: 1);
   }
 
@@ -176,18 +181,22 @@ class DesktopWindowController with WindowListener {
       await routeChange();
       return;
     }
-    final hideDuringTransition = Platform.isWindows;
-    await _animateOpacity(from: 1, to: 0);
-    if (hideDuringTransition) {
+    if (Platform.isWindows) {
+      await windowManager.setOpacity(0);
       await windowManager.hide();
+      await exitBubbleMode();
+      await routeChange();
+      await Future<void>.delayed(const Duration(milliseconds: 24));
+      await windowManager.setOpacity(1);
+      await windowManager.show();
+      await windowManager.focus();
+      return;
     }
+
+    await _animateOpacity(from: 1, to: 0);
     await exitBubbleMode();
     await routeChange();
     await Future<void>.delayed(const Duration(milliseconds: 32));
-    if (hideDuringTransition) {
-      await windowManager.show();
-      await windowManager.focus();
-    }
     await _animateOpacity(from: 0, to: 1);
   }
 
