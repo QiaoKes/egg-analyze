@@ -75,6 +75,16 @@
     ]
   },
   {
+    "id": "main/triple_high_weight_first_egg",
+    "group": "main",
+    "image": "assets/benchmarks/孵蛋页面_三蛋高重量首蛋误判样本.png",
+    "measurements": [
+      {"size": 0.25, "weight": 10.069},
+      {"size": 0.6, "weight": 15.404},
+      {"size": 0.23, "weight": 1.802}
+    ]
+  },
+  {
     "id": "main/detail_default",
     "group": "main",
     "image": "assets/benchmarks/蛋详细页面.png",

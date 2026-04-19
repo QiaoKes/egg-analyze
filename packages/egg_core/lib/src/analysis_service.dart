@@ -27,10 +27,10 @@ class DefaultAnalysisService implements AnalysisService {
     final engine = MatchingEngine(snapshot.dataset);
     final ocrDocument = await _ocrEngine.recognize(imageBytes);
     final recognizeCrop = _ocrEngine is TextOnlyOcrEngine
-        ? (_ocrEngine as TextOnlyOcrEngine).recognizeTextOnly
+        ? _ocrEngine.recognizeTextOnly
         : _ocrEngine.recognize;
     final recognizeCropBatch = _ocrEngine is BatchTextOnlyOcrEngine
-        ? (_ocrEngine as BatchTextOnlyOcrEngine).recognizeTextOnlyBatch
+        ? _ocrEngine.recognizeTextOnlyBatch
         : null;
     final measurements = await _extractor.extractBestMeasurements(
       lines: ocrDocument.lines,

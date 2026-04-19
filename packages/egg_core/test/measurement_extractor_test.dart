@@ -33,4 +33,15 @@ void main() {
     expect(result.first.heightInMeters, closeTo(0.23, 0.001));
     expect(result.first.weightInKg, closeTo(2.75, 0.001));
   });
+
+  test('prefers full number over embedded decimal substring', () {
+    final result = extractor.extractMeasurements([
+      const OcrLine(text: '0.25<×', bounds: Rect.fromLTWH(80, 120, 70, 20)),
+      const OcrLine(text: '10.069A', bounds: Rect.fromLTWH(80, 160, 90, 20)),
+    ], priors);
+
+    expect(result, hasLength(1));
+    expect(result.first.heightInMeters, closeTo(0.25, 0.001));
+    expect(result.first.weightInKg, closeTo(10.069, 0.001));
+  });
 }

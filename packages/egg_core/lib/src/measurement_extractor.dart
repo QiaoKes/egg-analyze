@@ -151,25 +151,47 @@ class MeasurementExtractor {
 
   _ParsedNumber? _parseNumber(String input) {
     final normalized = _normalizeNumericText(input);
-    final candidates = <String>{};
-    for (final match in RegExp(r'(?:\d+\.\d+|\.\d+|\d+)').allMatches(normalized)) {
-      candidates.add(match.group(0)!);
+    final candidates = <_NumberCandidate>[];
+    final seen = <String>{};
+    for (final match
+        in RegExp(r'(?:\d+\.\d+|\.\d+|\d+)').allMatches(normalized)) {
+      final value = match.group(0)!;
+      final key = '${match.start}:$value';
+      if (!seen.add(key)) {
+        continue;
+      }
+      candidates.add(
+        _NumberCandidate(
+          text: value,
+          start: match.start,
+        ),
+      );
     }
     for (final match in RegExp(r'0\.\d+').allMatches(normalized)) {
-      candidates.add(match.group(0)!);
+      final value = match.group(0)!;
+      final key = '${match.start}:$value';
+      if (!seen.add(key)) {
+        continue;
+      }
+      candidates.add(
+        _NumberCandidate(
+          text: value,
+          start: match.start,
+        ),
+      );
     }
     if (candidates.isEmpty) {
       return null;
     }
 
-    var valueText = candidates.first;
-    final prefersEmbeddedDecimal = candidates.any((item) => item.startsWith('0.')) &&
-        candidates.any((item) => (double.tryParse(item) ?? 0) > 10);
-    if (prefersEmbeddedDecimal) {
-      valueText = candidates
-          .where((item) => item.startsWith('0.'))
-          .reduce((left, right) => left.length >= right.length ? left : right);
-    }
+    candidates.sort((left, right) {
+      if (left.start != right.start) {
+        return left.start.compareTo(right.start);
+      }
+      return right.text.length.compareTo(left.text.length);
+    });
+
+    var valueText = candidates.first.text;
     if (valueText.startsWith('.')) {
       valueText = '0$valueText';
     }
@@ -397,10 +419,6 @@ class MeasurementExtractor {
     return score < 0 ? 0 : score;
   }
 
-  List<Measurement> _dedupe(List<Measurement> values) {
-    return _dedupeMeasurements(values);
-  }
-
   List<Measurement> _sortMeasurements(List<Measurement> values) {
     final sorted = [...values];
     sorted.sort((left, right) {
@@ -591,7 +609,9 @@ class MeasurementExtractor {
           return primaryParsed;
         }
         final key = primaryParsed.value.toStringAsFixed(3);
-        candidates.putIfAbsent(key, () => <_RescuedWeight>[]).add(primaryParsed);
+        candidates
+            .putIfAbsent(key, () => <_RescuedWeight>[])
+            .add(primaryParsed);
         if (_isHighConfidenceRescue(primaryParsed)) {
           continue;
         }
@@ -610,7 +630,9 @@ class MeasurementExtractor {
         return grayscaleParsed;
       }
       final key = grayscaleParsed.value.toStringAsFixed(3);
-      candidates.putIfAbsent(key, () => <_RescuedWeight>[]).add(grayscaleParsed);
+      candidates
+          .putIfAbsent(key, () => <_RescuedWeight>[])
+          .add(grayscaleParsed);
     }
 
     if (batchVariants.isNotEmpty && recognizeCropBatch != null) {
@@ -618,8 +640,7 @@ class MeasurementExtractor {
         batchVariants.map((item) => item.bytes).toList(growable: false),
       );
       for (var i = 0; i < documents.length; i++) {
-        final parsed =
-            _parseBestRescuedWeight(documents[i].lines, weightRange);
+        final parsed = _parseBestRescuedWeight(documents[i].lines, weightRange);
         if (parsed == null) {
           continue;
         }
@@ -670,7 +691,9 @@ class MeasurementExtractor {
     final expanded = _expandRange(weightRange, 0.12, 0.02);
     final precisionDigits = _decimalDigits(parsed.normalized);
     final sameValue = (parsed.value - item.weightInKg).abs() <= 0.001;
-    return !(sameValue && precisionDigits >= 3 && _inRange(parsed.value, expanded));
+    return !(sameValue &&
+        precisionDigits >= 3 &&
+        _inRange(parsed.value, expanded));
   }
 
   Future<double?> _rescueWeightBelowAnchor({
@@ -950,6 +973,16 @@ class _ParsedNumber {
   final String normalized;
 }
 
+class _NumberCandidate {
+  const _NumberCandidate({
+    required this.text,
+    required this.start,
+  });
+
+  final String text;
+  final int start;
+}
+
 class _ExtractionCandidate {
   const _ExtractionCandidate({
     required this.value,
@@ -999,7 +1032,8 @@ class _CropRecognizerCache {
   final Future<OcrDocument> Function(Uint8List imageBytes) _recognizeSingle;
   final Future<List<OcrDocument>> Function(List<Uint8List> imageBytesList)?
       _recognizeBatch;
-  final Map<String, Future<OcrDocument>> _cache = <String, Future<OcrDocument>>{};
+  final Map<String, Future<OcrDocument>> _cache =
+      <String, Future<OcrDocument>>{};
 
   Future<OcrDocument> recognize(Uint8List imageBytes) {
     final key = base64Encode(imageBytes);
@@ -1009,7 +1043,8 @@ class _CropRecognizerCache {
   Future<List<OcrDocument>> Function(List<Uint8List>)? get recognizeBatch =>
       _recognizeBatch == null ? null : _recognizeMany;
 
-  Future<List<OcrDocument>> _recognizeMany(List<Uint8List> imageBytesList) async {
+  Future<List<OcrDocument>> _recognizeMany(
+      List<Uint8List> imageBytesList) async {
     final futures = List<Future<OcrDocument>>.filled(
       imageBytesList.length,
       Future<OcrDocument>.value(const OcrDocument(lines: [])),
