@@ -314,6 +314,9 @@ class _MeasurementCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final title = entry.measurement.eggName?.trim().isNotEmpty == true
+        ? '蛋 $index · ${entry.measurement.eggName!.trim()}'
+        : '蛋 $index';
     return Card(
       elevation: 0,
       color: const Color(0xFFF7F9FD),
@@ -322,8 +325,7 @@ class _MeasurementCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('蛋 $index',
-                style: const TextStyle(fontWeight: FontWeight.w700)),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
             Wrap(
               spacing: 16,

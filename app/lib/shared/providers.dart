@@ -95,6 +95,7 @@ class AnalysisController {
       anchorText: '手动输入',
       anchor: Offset.zero,
       rawLines: const [],
+      eggName: null,
     );
     final result = AnalysisResult(
       entries: [

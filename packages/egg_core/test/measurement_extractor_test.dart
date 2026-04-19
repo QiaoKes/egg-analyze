@@ -44,4 +44,17 @@ void main() {
     expect(result.first.heightInMeters, closeTo(0.25, 0.001));
     expect(result.first.weightInKg, closeTo(10.069, 0.001));
   });
+
+  test('captures egg name from title line above measurement', () {
+    final result = extractor.extractMeasurements([
+      const OcrLine(text: '孵化装置1', bounds: Rect.fromLTWH(10, 20, 90, 24)),
+      const OcrLine(text: '神奇的蛋', bounds: Rect.fromLTWH(120, 30, 120, 24)),
+      const OcrLine(text: '完成', bounds: Rect.fromLTWH(150, 70, 50, 20)),
+      const OcrLine(text: '0.23', bounds: Rect.fromLTWH(150, 120, 60, 20)),
+      const OcrLine(text: '2.750', bounds: Rect.fromLTWH(150, 160, 80, 20)),
+    ], priors);
+
+    expect(result, hasLength(1));
+    expect(result.first.eggName, '神奇的蛋');
+  });
 }

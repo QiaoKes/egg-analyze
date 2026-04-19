@@ -128,6 +128,7 @@ class MeasurementExtractor {
           anchor:
               Offset(pair.left.line.x.toDouble(), pair.left.line.y.toDouble()),
           rawLines: lines,
+          eggName: _inferEggNameForAnchor(sortedLines, pair.left.line),
           weightText: pair.right.line.text,
           weightBounds: Rect.fromLTWH(
             pair.right.line.x.toDouble(),
@@ -271,6 +272,71 @@ class MeasurementExtractor {
   bool _isDigitOrDot(int rune) {
     final value = String.fromCharCode(rune);
     return RegExp(r'[0-9.]').hasMatch(value);
+  }
+
+  String? _inferEggNameForAnchor(List<OcrLine> lines, OcrLine anchor) {
+    _EggNameCandidate? best;
+    for (final line in lines) {
+      final text = line.text.replaceAll(RegExp(r'\s+'), '').trim();
+      if (text.isEmpty || !_looksLikeEggName(text)) {
+        continue;
+      }
+
+      final dy = anchor.bounds.top - line.bounds.top;
+      if (dy < 36 || dy > 180) {
+        continue;
+      }
+
+      final overlapLeft = math.max(line.bounds.left, anchor.bounds.left - 120);
+      final overlapRight =
+          math.min(line.bounds.right, anchor.bounds.right + 80);
+      if (overlapRight - overlapLeft <= 0) {
+        continue;
+      }
+
+      final centerDistance =
+          (line.bounds.center.dx - anchor.bounds.center.dx).abs();
+      var score = 0.0;
+      if (text.contains('蛋')) {
+        score += 220;
+      }
+      if (text.endsWith('蛋')) {
+        score += 60;
+      }
+      score += math.min(text.length, 12) * 6;
+      score += math.min(overlapRight - overlapLeft, anchor.bounds.width) * 0.4;
+      score -= (dy - 36) * 0.8;
+      score -= centerDistance * 0.18;
+
+      final candidate = _EggNameCandidate(text: text, score: score);
+      if (best == null || candidate.score > best.score) {
+        best = candidate;
+      }
+    }
+    return best?.text;
+  }
+
+  bool _looksLikeEggName(String text) {
+    if (text.length < 2) {
+      return false;
+    }
+    if (text.contains('%') ||
+        text.contains('加速中') ||
+        text.contains('完成') ||
+        text.contains('孵化装置')) {
+      return false;
+    }
+
+    final parsed = _parseNumber(text);
+    if (parsed != null && !_isIgnoredNumberLine(text, parsed.normalized)) {
+      return false;
+    }
+
+    final hasWordLikeChars = RegExp(r'[\u4e00-\u9fffA-Za-z]').hasMatch(text);
+    if (!hasWordLikeChars) {
+      return false;
+    }
+    return text.contains('蛋') || RegExp(r'[\u4e00-\u9fff]{2,}').hasMatch(text);
   }
 
   bool _isIgnoredNumberLine(String raw, String normalized) {
@@ -508,6 +574,7 @@ class MeasurementExtractor {
           anchorText: line.text,
           anchor: Offset(line.x.toDouble(), line.y.toDouble()),
           rawLines: lines,
+          eggName: _inferEggNameForAnchor(sortedLines, line),
         ),
       );
       matched.add(anchorKey);
@@ -557,6 +624,7 @@ class MeasurementExtractor {
           anchorText: item.anchorText,
           anchor: item.anchor,
           rawLines: item.rawLines,
+          eggName: item.eggName,
           weightText: item.weightText,
           weightBounds: item.weightBounds,
         ),
@@ -981,6 +1049,16 @@ class _NumberCandidate {
 
   final String text;
   final int start;
+}
+
+class _EggNameCandidate {
+  const _EggNameCandidate({
+    required this.text,
+    required this.score,
+  });
+
+  final String text;
+  final double score;
 }
 
 class _ExtractionCandidate {
