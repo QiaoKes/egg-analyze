@@ -39,5 +39,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/benchmarks/
-    - assets/benchmarks/synthetic/
     - assets/ui/
