@@ -118,7 +118,14 @@ class _HomePageState extends ConsumerState<HomePage> {
             captured!.imageBytes!,
             label: '区域截图',
           );
-      if (mounted) {
+      if (mounted && (Platform.isMacOS || Platform.isWindows)) {
+        final controller = ref.read(desktopWindowControllerProvider);
+        await controller.transitionToBubble(() {
+          if (context.mounted) {
+            context.go('/bubble');
+          }
+        });
+      } else if (mounted) {
         context.go('/result');
       }
     } catch (error) {
@@ -311,6 +318,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       body: useDesktopFrame
           ? DesktopPageFrame(
               title: '洛克王国精灵蛋分析',
+              currentRoute: '/',
               actions: [
                 ...buildDesktopWindowActions(
                   context,

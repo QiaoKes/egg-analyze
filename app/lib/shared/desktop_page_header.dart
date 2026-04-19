@@ -1,19 +1,25 @@
 import 'dart:io';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:window_manager/window_manager.dart';
+
+import 'providers.dart';
 
 class DesktopPageFrame extends StatelessWidget {
   const DesktopPageFrame({
     super.key,
     required this.title,
     required this.child,
+    required this.currentRoute,
     this.leading,
     this.actions = const [],
   });
 
   final String title;
   final Widget child;
+  final String currentRoute;
   final Widget? leading;
   final List<Widget> actions;
 
@@ -38,6 +44,7 @@ class DesktopPageFrame extends StatelessWidget {
           children: [
             DesktopPageHeader(
               title: title,
+              currentRoute: currentRoute,
               leading: leading,
               actions: actions,
             ),
@@ -53,11 +60,13 @@ class DesktopPageHeader extends StatelessWidget {
   const DesktopPageHeader({
     super.key,
     required this.title,
+    required this.currentRoute,
     this.leading,
     this.actions = const [],
   });
 
   final String title;
+  final String currentRoute;
   final Widget? leading;
   final List<Widget> actions;
 
@@ -79,7 +88,10 @@ class DesktopPageHeader extends StatelessWidget {
           if (showActions) ...actions,
           if (Platform.isWindows) ...[
             if (showActions) const SizedBox(width: 8),
-            _DesktopWindowControls(brightness: theme.brightness),
+            _DesktopWindowControls(
+              brightness: theme.brightness,
+              currentRoute: currentRoute,
+            ),
           ],
         ];
 
@@ -141,16 +153,21 @@ class DesktopPageHeader extends StatelessWidget {
   }
 }
 
-class _DesktopWindowControls extends StatefulWidget {
-  const _DesktopWindowControls({required this.brightness});
+class _DesktopWindowControls extends ConsumerStatefulWidget {
+  const _DesktopWindowControls({
+    required this.brightness,
+    required this.currentRoute,
+  });
 
   final Brightness brightness;
+  final String currentRoute;
 
   @override
-  State<_DesktopWindowControls> createState() => _DesktopWindowControlsState();
+  ConsumerState<_DesktopWindowControls> createState() =>
+      _DesktopWindowControlsState();
 }
 
-class _DesktopWindowControlsState extends State<_DesktopWindowControls>
+class _DesktopWindowControlsState extends ConsumerState<_DesktopWindowControls>
     with WindowListener {
   bool _isMaximized = false;
 
@@ -196,6 +213,9 @@ class _DesktopWindowControlsState extends State<_DesktopWindowControls>
 
   @override
   Widget build(BuildContext context) {
+    final controller = ref.read(desktopWindowControllerProvider);
+    controller.registerRoute(widget.currentRoute);
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -215,7 +235,17 @@ class _DesktopWindowControlsState extends State<_DesktopWindowControls>
           ),
         WindowCaptionButton.close(
           brightness: widget.brightness,
-          onPressed: () => windowManager.close(),
+          onPressed: () async {
+            if (!controller.isDesktop || controller.isBubbleMode) {
+              await windowManager.close();
+              return;
+            }
+            await controller.transitionToBubble(() {
+              if (context.mounted) {
+                context.go('/bubble');
+              }
+            });
+          },
         ),
       ],
     );

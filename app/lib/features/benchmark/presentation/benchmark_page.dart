@@ -155,6 +155,7 @@ class _BenchmarkPageState extends ConsumerState<BenchmarkPage> {
       body: useDesktopFrame
           ? DesktopPageFrame(
               title: 'OCR 基准测试',
+              currentRoute: '/benchmark',
               leading: IconButton(
                 tooltip: '返回',
                 onPressed: () {

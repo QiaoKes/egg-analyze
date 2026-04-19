@@ -10,8 +10,7 @@ import '../features/result/presentation/result_page.dart';
 import '../features/settings/presentation/settings_page.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final initialLocation =
-      Platform.isMacOS || Platform.isWindows ? '/bubble' : '/';
+  final initialLocation = Platform.isMacOS ? '/bubble' : '/';
   return GoRouter(
     initialLocation: initialLocation,
     routes: [

@@ -117,6 +117,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       body: useDesktopFrame
           ? DesktopPageFrame(
               title: '设置',
+              currentRoute: '/settings',
               leading: IconButton(
                 tooltip: '返回',
                 onPressed: () {

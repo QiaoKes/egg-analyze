@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../shared/desktop_page_header.dart';
+import '../../../shared/desktop_window_actions.dart';
 import '../../../shared/portrait_image.dart';
 import '../../../shared/providers.dart';
 
@@ -35,7 +36,13 @@ class ResultPage extends ConsumerWidget {
         body: useDesktopFrame
             ? DesktopPageFrame(
                 title: '分析结果',
+                currentRoute: '/result',
                 leading: const _HomeBackButton(),
+                actions: buildDesktopWindowActions(
+                  context,
+                  ref,
+                  currentRoute: '/result',
+                ),
                 child: emptyState,
               )
             : emptyState,
@@ -129,7 +136,13 @@ class ResultPage extends ConsumerWidget {
       body: useDesktopFrame
           ? DesktopPageFrame(
               title: '分析结果',
+              currentRoute: '/result',
               leading: const _HomeBackButton(),
+              actions: buildDesktopWindowActions(
+                context,
+                ref,
+                currentRoute: '/result',
+              ),
               child: content,
             )
           : content,

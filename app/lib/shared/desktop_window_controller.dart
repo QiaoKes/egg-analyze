@@ -32,6 +32,36 @@ class DesktopWindowController with WindowListener {
     _initialized = true;
     await windowManager.ensureInitialized();
     windowManager.addListener(this);
+    if (Platform.isWindows) {
+      const options = WindowOptions(
+        size: _defaultFullSize,
+        minimumSize: _minimumFullSize,
+        center: true,
+        backgroundColor: _fullWindowBackground,
+        titleBarStyle: TitleBarStyle.hidden,
+        windowButtonVisibility: false,
+        alwaysOnTop: true,
+        skipTaskbar: false,
+      );
+      await windowManager.waitUntilReadyToShow(options, () async {
+        _bubbleMode = false;
+        await windowManager.setAsFrameless();
+        await windowManager.setHasShadow(true);
+        await windowManager.setAlwaysOnTop(true);
+        await windowManager.setSkipTaskbar(false);
+        await windowManager.setResizable(true);
+        await windowManager.setMinimizable(true);
+        await windowManager.setMaximizable(true);
+        await windowManager.setBackgroundColor(_fullWindowBackground);
+        await windowManager.setMinimumSize(_minimumFullSize);
+        await windowManager.setMaximumSize(const Size(-1, -1));
+        await windowManager.show();
+        await windowManager.focus();
+        _lastFullBounds = await windowManager.getBounds();
+      });
+      return;
+    }
+
     const options = WindowOptions(
       size: _bubbleSize,
       minimumSize: _bubbleSize,
@@ -182,6 +212,13 @@ class DesktopWindowController with WindowListener {
       return;
     }
     windowManager.removeListener(this);
+  }
+
+  Future<void> exitApplication() async {
+    if (!isDesktop) {
+      return;
+    }
+    await windowManager.destroy();
   }
 
   Future<void> _restoreBubblePositionOrDefault() async {
