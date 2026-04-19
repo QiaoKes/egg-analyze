@@ -42,4 +42,41 @@ void main() {
       isTrue,
     );
   });
+
+  test('keeps rescued measurements ordered by egg position', () async {
+    final source = img.Image(width: 500, height: 900);
+    final bytes = Uint8List.fromList(img.encodePng(source));
+    var cropCalls = 0;
+
+    final measurements = await extractor.extractBestMeasurements(
+      lines: const [
+        OcrLine(text: '0.23<×', bounds: Rect.fromLTWH(120, 120, 80, 24)),
+        OcrLine(text: '2.75A', bounds: Rect.fromLTWH(120, 160, 80, 24)),
+        OcrLine(text: '0.21<×', bounds: Rect.fromLTWH(120, 320, 80, 24)),
+        OcrLine(text: 'M60E\'0', bounds: Rect.fromLTWH(120, 360, 90, 24)),
+        OcrLine(text: '0.33<×', bounds: Rect.fromLTWH(120, 560, 80, 24)),
+        OcrLine(text: '11.573A', bounds: Rect.fromLTWH(120, 600, 90, 24)),
+      ],
+      priors: priors,
+      sourceBytes: bytes,
+      recognizeCrop: (_) async {
+        cropCalls += 1;
+        if (cropCalls == 1) {
+          return const OcrDocument(
+            lines: [
+              OcrLine(text: '0.309A', bounds: Rect.zero),
+            ],
+          );
+        }
+        return const OcrDocument(lines: []);
+      },
+    );
+
+    expect(
+      measurements
+          .map((item) => item.heightInMeters.toStringAsFixed(3))
+          .toList(growable: false),
+      ['0.230', '0.210', '0.330'],
+    );
+  });
 }

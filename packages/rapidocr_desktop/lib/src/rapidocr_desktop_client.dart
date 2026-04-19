@@ -47,7 +47,10 @@ class RapidOcrDesktop {
           inputFile.path,
           mode: 'full',
         );
-        if (!_shouldTryRecognitionOnly(dimensions)) {
+        if (!_shouldTryRecognitionOnly(
+          dimensions,
+          primary,
+        )) {
           return primary;
         }
 
@@ -331,7 +334,10 @@ class RapidOcrDesktop {
     return _ImageDimensions(width: decoded.width, height: decoded.height);
   }
 
-  bool _shouldTryRecognitionOnly(_ImageDimensions? dimensions) {
+  bool _shouldTryRecognitionOnly(
+    _ImageDimensions? dimensions,
+    OcrDocument primary,
+  ) {
     if (dimensions == null) {
       return false;
     }
@@ -339,8 +345,19 @@ class RapidOcrDesktop {
     final width = dimensions.width;
     final height = dimensions.height;
     final longestEdge = width > height ? width : height;
+    final shortestEdge = width < height ? width : height;
     final aspectRatio = height == 0 ? 0 : width / height;
-    return longestEdge <= 420 || (height <= 180 && aspectRatio >= 2);
+    final looksLikeRescueCrop =
+        longestEdge <= 320 || (shortestEdge <= 96 && aspectRatio >= 1.8);
+    if (!looksLikeRescueCrop) {
+      return false;
+    }
+
+    final score = _scoreDocument(primary);
+    final decimalLikeLines = primary.lines
+        .where((line) => RegExp(r'\d\.\d').hasMatch(line.text))
+        .length;
+    return primary.lines.isEmpty || decimalLikeLines == 0 || score <= 4;
   }
 
   int _scoreDocument(OcrDocument document) {

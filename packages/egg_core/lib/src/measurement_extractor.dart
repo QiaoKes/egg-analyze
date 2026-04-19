@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
@@ -19,6 +20,7 @@ class MeasurementExtractor {
     if (sourceBytes == null || recognizeCrop == null) {
       return base;
     }
+    final cachedRecognizeCrop = _memoizeRecognizeCrop(recognizeCrop);
 
     final decoded = img.decodeImage(sourceBytes);
     if (decoded == null) {
@@ -30,19 +32,30 @@ class MeasurementExtractor {
       lines: lines,
       existing: base,
       priors: priors,
-      recognizeCrop: recognizeCrop,
+      recognizeCrop: cachedRecognizeCrop,
     );
 
     final combined = _dedupeMeasurements([
       ...base,
       ...rescued,
     ]);
-    return _refineWeightLineMeasurements(
+    final refined = await _refineWeightLineMeasurements(
       measurements: combined,
       sourceImage: decoded,
       weightRange: priors.weight,
-      recognizeCrop: recognizeCrop,
+      recognizeCrop: cachedRecognizeCrop,
     );
+    return _sortMeasurements(refined);
+  }
+
+  Future<OcrDocument> Function(Uint8List imageBytes) _memoizeRecognizeCrop(
+    Future<OcrDocument> Function(Uint8List imageBytes) recognizeCrop,
+  ) {
+    final cache = <String, Future<OcrDocument>>{};
+    return (imageBytes) {
+      final key = base64Encode(imageBytes);
+      return cache.putIfAbsent(key, () => recognizeCrop(imageBytes));
+    };
   }
 
   List<Measurement> extractMeasurements(
@@ -136,7 +149,7 @@ class MeasurementExtractor {
       return left.anchor.dy.compareTo(right.anchor.dy);
     });
 
-    return _dedupeMeasurements(results);
+    return _sortMeasurements(_dedupeMeasurements(results));
   }
 
   _ParsedNumber? _parseNumber(String input) {
@@ -391,6 +404,17 @@ class MeasurementExtractor {
     return _dedupeMeasurements(values);
   }
 
+  List<Measurement> _sortMeasurements(List<Measurement> values) {
+    final sorted = [...values];
+    sorted.sort((left, right) {
+      if ((left.anchor.dy - right.anchor.dy).abs() <= 12) {
+        return left.anchor.dx.compareTo(right.anchor.dx);
+      }
+      return left.anchor.dy.compareTo(right.anchor.dy);
+    });
+    return sorted;
+  }
+
   List<Measurement> _dedupeMeasurements(List<Measurement> values) {
     final seen = <String>{};
     final filtered = <Measurement>[];
@@ -471,7 +495,7 @@ class MeasurementExtractor {
       matched.add(anchorKey);
     }
 
-    return rescued;
+    return _sortMeasurements(rescued);
   }
 
   Future<List<Measurement>> _refineWeightLineMeasurements({
@@ -487,10 +511,15 @@ class MeasurementExtractor {
         refined.add(item);
         continue;
       }
+      if (!_shouldRefineWeightLine(item, weightRange)) {
+        refined.add(item);
+        continue;
+      }
 
       final refinedWeight = await _refineWeightFromExactLineCrop(
         sourceImage: sourceImage,
         weightBounds: weightBounds,
+        currentWeight: item.weightInKg,
         weightRange: weightRange,
         recognizeCrop: recognizeCrop,
       );
@@ -512,12 +541,13 @@ class MeasurementExtractor {
         ),
       );
     }
-    return _dedupeMeasurements(refined);
+    return _sortMeasurements(_dedupeMeasurements(refined));
   }
 
   Future<_RescuedWeight?> _refineWeightFromExactLineCrop({
     required img.Image sourceImage,
     required Rect weightBounds,
+    required double currentWeight,
     required Range weightRange,
     required Future<OcrDocument> Function(Uint8List imageBytes) recognizeCrop,
   }) async {
@@ -534,21 +564,36 @@ class MeasurementExtractor {
         continue;
       }
 
-      final variants = <img.Image>[
-        crop,
-        img.grayscale(crop),
-      ];
-
-      for (final variant in variants) {
-        final bytes = Uint8List.fromList(img.encodePng(variant));
-        final document = await recognizeCrop(bytes);
-        final parsed = _parseBestRescuedWeight(document.lines, weightRange);
-        if (parsed == null) {
+      final primaryBytes = Uint8List.fromList(img.encodePng(crop));
+      final primaryDocument = await recognizeCrop(primaryBytes);
+      final primaryParsed =
+          _parseBestRescuedWeight(primaryDocument.lines, weightRange);
+      if (primaryParsed != null) {
+        if ((primaryParsed.value - currentWeight).abs() <= 0.001 &&
+            primaryParsed.precisionDigits >= 3) {
+          return primaryParsed;
+        }
+        final key = primaryParsed.value.toStringAsFixed(3);
+        candidates.putIfAbsent(key, () => <_RescuedWeight>[]).add(primaryParsed);
+        if (_isHighConfidenceRescue(primaryParsed)) {
           continue;
         }
-        final key = parsed.value.toStringAsFixed(3);
-        candidates.putIfAbsent(key, () => <_RescuedWeight>[]).add(parsed);
       }
+
+      final grayscale = img.grayscale(crop);
+      final grayscaleBytes = Uint8List.fromList(img.encodePng(grayscale));
+      final grayscaleDocument = await recognizeCrop(grayscaleBytes);
+      final grayscaleParsed =
+          _parseBestRescuedWeight(grayscaleDocument.lines, weightRange);
+      if (grayscaleParsed == null) {
+        continue;
+      }
+      if ((grayscaleParsed.value - currentWeight).abs() <= 0.001 &&
+          grayscaleParsed.precisionDigits >= 3) {
+        return grayscaleParsed;
+      }
+      final key = grayscaleParsed.value.toStringAsFixed(3);
+      candidates.putIfAbsent(key, () => <_RescuedWeight>[]).add(grayscaleParsed);
     }
 
     if (candidates.isEmpty) {
@@ -573,6 +618,23 @@ class MeasurementExtractor {
     }
 
     return best;
+  }
+
+  bool _shouldRefineWeightLine(Measurement item, Range weightRange) {
+    final rawText = item.weightText;
+    if (rawText == null || rawText.trim().isEmpty) {
+      return true;
+    }
+
+    final parsed = _parseNumber(rawText);
+    if (parsed == null) {
+      return true;
+    }
+
+    final expanded = _expandRange(weightRange, 0.12, 0.02);
+    final precisionDigits = _decimalDigits(parsed.normalized);
+    final sameValue = (parsed.value - item.weightInKg).abs() <= 0.001;
+    return !(sameValue && precisionDigits >= 3 && _inRange(parsed.value, expanded));
   }
 
   Future<double?> _rescueWeightBelowAnchor({
@@ -609,6 +671,9 @@ class MeasurementExtractor {
         final parsed = _parseBestRescuedWeight(document.lines, weightRange);
         if (parsed == null) {
           continue;
+        }
+        if (_isHighConfidenceRescue(parsed)) {
+          return parsed;
         }
         if (parsed.score > bestScore) {
           bestScore = parsed.score;
@@ -681,6 +746,7 @@ class MeasurementExtractor {
       List<OcrLine> lines, Range weightRange) {
     var bestScore = -1.0;
     double? bestValue;
+    String? bestNormalized;
     final expanded = _expandRange(weightRange, 0.25, 0.03);
     for (final line in lines) {
       final parsed = _parseNumber(line.text);
@@ -695,27 +761,40 @@ class MeasurementExtractor {
       if (score > bestScore) {
         bestScore = score;
         bestValue = parsed.value;
+        bestNormalized = parsed.normalized;
       }
     }
 
     if (bestValue == null || bestScore <= 0) {
       return null;
     }
-    return _RescuedWeight(value: bestValue, score: bestScore);
+    return _RescuedWeight(
+      value: bestValue,
+      score: bestScore,
+      precisionDigits: _decimalDigits(bestNormalized!),
+    );
+  }
+
+  bool _isHighConfidenceRescue(_RescuedWeight value) {
+    return value.precisionDigits >= 3 && value.score >= 88;
   }
 
   double _rescuedPrecisionScore(String normalized) {
-    final decimalIndex = normalized.indexOf('.');
-    if (decimalIndex == -1 || decimalIndex == normalized.length - 1) {
-      return 0;
-    }
-    final tail = normalized.substring(decimalIndex + 1);
-    final digits = tail.runes.takeWhile((r) => r >= 48 && r <= 57).length;
+    final digits = _decimalDigits(normalized);
     var score = math.min(digits, 3) * 3.0;
     if (digits >= 3) {
       score += 1;
     }
     return score;
+  }
+
+  int _decimalDigits(String normalized) {
+    final decimalIndex = normalized.indexOf('.');
+    if (decimalIndex == -1 || decimalIndex == normalized.length - 1) {
+      return 0;
+    }
+    final tail = normalized.substring(decimalIndex + 1);
+    return tail.runes.takeWhile((r) => r >= 48 && r <= 57).length;
   }
 
   OcrLine? _findRescueTarget(OcrLine anchor, List<OcrLine> lines) {
@@ -833,8 +912,10 @@ class _RescuedWeight {
   const _RescuedWeight({
     required this.value,
     required this.score,
+    required this.precisionDigits,
   });
 
   final double value;
   final double score;
+  final int precisionDigits;
 }
