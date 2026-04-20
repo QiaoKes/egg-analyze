@@ -9,21 +9,57 @@ import '../../../shared/desktop_page_header.dart';
 import '../../../shared/desktop_window_actions.dart';
 import '../../../shared/portrait_image.dart';
 import '../../../shared/providers.dart';
+import '../../../shared/screenshot_analysis_flow.dart';
 
-class ResultPage extends ConsumerWidget {
+class ResultPage extends ConsumerStatefulWidget {
   const ResultPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ResultPage> createState() => _ResultPageState();
+}
+
+class _ResultPageState extends ConsumerState<ResultPage> {
+  bool _captureBusy = false;
+
+  Future<void> _captureAgain() async {
+    if (_captureBusy || !supportsRegionCapture) {
+      return;
+    }
+    setState(() => _captureBusy = true);
+    try {
+      await captureRegionAndAnalyze(context, ref);
+    } finally {
+      if (mounted) {
+        setState(() => _captureBusy = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final result = ref.watch(currentAnalysisResultProvider);
     final useDesktopFrame = Platform.isWindows;
+    final showCaptureAction = supportsRegionCapture;
     final showAppBar =
         !useDesktopFrame && MediaQuery.sizeOf(context).width >= 320;
     if (result == null) {
       final emptyState = Center(
-        child: FilledButton(
-          onPressed: () => context.go('/'),
-          child: const Text('先返回首页导入图片'),
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          alignment: WrapAlignment.center,
+          children: [
+            if (showCaptureAction)
+              FilledButton.icon(
+                onPressed: _captureBusy ? null : _captureAgain,
+                icon: const Icon(Icons.screenshot_monitor_outlined),
+                label: Text(_captureBusy ? '截屏中...' : '截屏分析'),
+              ),
+            OutlinedButton(
+              onPressed: () => context.go('/'),
+              child: const Text('返回首页导入图片'),
+            ),
+          ],
         ),
       );
       return Scaffold(
@@ -31,6 +67,13 @@ class ResultPage extends ConsumerWidget {
             ? AppBar(
                 leading: const _HomeBackButton(),
                 title: const Text('分析结果'),
+                actions: [
+                  if (showCaptureAction)
+                    _CaptureAgainIconButton(
+                      busy: _captureBusy,
+                      onPressed: _captureAgain,
+                    ),
+                ],
               )
             : null,
         body: useDesktopFrame
@@ -42,6 +85,13 @@ class ResultPage extends ConsumerWidget {
                   context,
                   ref,
                   currentRoute: '/result',
+                  trailing: [
+                    if (showCaptureAction)
+                      _CaptureAgainIconButton(
+                        busy: _captureBusy,
+                        onPressed: _captureAgain,
+                      ),
+                  ],
                 ),
                 child: emptyState,
               )
@@ -57,6 +107,9 @@ class ResultPage extends ConsumerWidget {
         final preview = _SourcePreviewCard(
           result: result,
           fillHeight: wide,
+          showCaptureAction: showCaptureAction,
+          captureBusy: _captureBusy,
+          onCaptureAgain: _captureAgain,
         );
 
         if (!hasPreview) {
@@ -131,6 +184,13 @@ class ResultPage extends ConsumerWidget {
           ? AppBar(
               leading: const _HomeBackButton(),
               title: const Text('分析结果'),
+              actions: [
+                if (showCaptureAction)
+                  _CaptureAgainIconButton(
+                    busy: _captureBusy,
+                    onPressed: _captureAgain,
+                  ),
+              ],
             )
           : null,
       body: useDesktopFrame
@@ -142,6 +202,13 @@ class ResultPage extends ConsumerWidget {
                 context,
                 ref,
                 currentRoute: '/result',
+                trailing: [
+                  if (showCaptureAction)
+                    _CaptureAgainIconButton(
+                      busy: _captureBusy,
+                      onPressed: _captureAgain,
+                    ),
+                ],
               ),
               child: content,
             )
@@ -167,10 +234,16 @@ class _SourcePreviewCard extends StatelessWidget {
   const _SourcePreviewCard({
     required this.result,
     required this.fillHeight,
+    required this.showCaptureAction,
+    required this.captureBusy,
+    required this.onCaptureAgain,
   });
 
   final AnalysisResult result;
   final bool fillHeight;
+  final bool showCaptureAction;
+  final bool captureBusy;
+  final VoidCallback onCaptureAgain;
 
   @override
   Widget build(BuildContext context) {
@@ -181,7 +254,23 @@ class _SourcePreviewCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: fillHeight ? MainAxisSize.max : MainAxisSize.min,
           children: [
-            const Text('图片预览', style: TextStyle(fontWeight: FontWeight.w700)),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                const Text(
+                  '图片预览',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                if (showCaptureAction)
+                  OutlinedButton.icon(
+                    onPressed: captureBusy ? null : onCaptureAgain,
+                    icon: const Icon(Icons.screenshot_monitor_outlined),
+                    label: Text(captureBusy ? '截屏中...' : '再次截屏'),
+                  ),
+              ],
+            ),
             const SizedBox(height: 12),
             Text('来源：${result.sourceLabel}'),
             const SizedBox(height: 8),
@@ -194,6 +283,25 @@ class _SourcePreviewCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CaptureAgainIconButton extends StatelessWidget {
+  const _CaptureAgainIconButton({
+    required this.busy,
+    required this.onPressed,
+  });
+
+  final bool busy;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: '再次截屏',
+      onPressed: busy ? null : onPressed,
+      icon: const Icon(Icons.screenshot_monitor_outlined),
     );
   }
 }
